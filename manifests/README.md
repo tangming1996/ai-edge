@@ -159,7 +159,7 @@ edge-agent 不通过 Helm 部署，而是在每台边缘服务器上独立安装
 
 ```bash
 # 在每台边缘节点上执行
-curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/manifests/scripts/install-edge-agent.sh | \
+curl -sL https://raw.githubusercontent.com/tangming1996/ai-edge/main/manifests/scripts/install-edge-agent.sh | \
     GATEWAY_ID=<gateway-id> \
     CONTROL_PLANE_ADDR=ai-edge-apiserver.edgeai-system.svc.cluster.local:9090 \
     TOKEN=<bootstrap-token> \
@@ -180,10 +180,10 @@ edgectl 是云端操作员工具，安装在管理员工作机上：
 
 ```bash
 # 一键安装（最新版本）
-curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/manifests/scripts/install-edgectl.sh | bash
+curl -sL https://raw.githubusercontent.com/tangming1996/ai-edge/main/manifests/scripts/install-edgectl.sh | bash
 
 # 指定版本
-VERSION=v0.1.0 curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/manifests/scripts/install-edgectl.sh | bash
+VERSION=v0.1.0 curl -sL https://raw.githubusercontent.com/tangming1996/ai-edge/main/manifests/scripts/install-edgectl.sh | bash
 
 # 启用 Shell 补全
 ENABLE_SHELL_COMPLETION=yes bash install-edgectl.sh

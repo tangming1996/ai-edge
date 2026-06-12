@@ -158,6 +158,11 @@ release-binaries:
 			CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(DIST_DIR)/$$cmd-linux-$$arch ./cmd/$$cmd; \
 		done; \
 	done
+	@set -euo pipefail; \
+	for arch in amd64 arm64; do \
+		echo "Building edgectl for darwin/$$arch"; \
+		CGO_ENABLED=0 GOOS=darwin GOARCH=$$arch $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(DIST_DIR)/edgectl-darwin-$$arch ./cmd/edgectl; \
+	done
 
 checksums: release-binaries
 	@cd $(DIST_DIR) && shasum -a 256 * > checksums.txt

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="edgeai-platform/ai-edge"
+REPO="${REPO:-tangming1996/ai-edge}"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/edge-agent"
 SYSTEMD_DIR="/etc/systemd/system"
@@ -9,6 +9,19 @@ DOWNLOAD_DIR="$(mktemp -d)"
 
 cleanup() { rm -rf "$DOWNLOAD_DIR"; }
 trap cleanup EXIT
+
+normalize_version() {
+  local version="$1"
+  if [[ -z "$version" ]] || [[ "$version" == "latest" ]]; then
+    echo "$version"
+    return
+  fi
+  if [[ "$version" == v* ]]; then
+    echo "$version"
+    return
+  fi
+  echo "v$version"
+}
 
 usage() {
   cat <<EOF
@@ -21,11 +34,12 @@ Environment Variables (all optional unless noted):
   TOKEN                Bootstrap token from edgectl (required)
   BINARY_URL           URL to download edge-agent binary (optional)
                        Defaults to GitHub release for current version
+  REPO                 GitHub repository for releases (default: tangming1996/ai-edge)
   DATA_DIR             Local data directory (default: /var/lib/edge-agent)
   HTTP_ADDR            Agent HTTP listen address (default: :8080)
 
 Example:
-  curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/manifests/scripts/install-edge-agent.sh | \\
+  curl -sL https://raw.githubusercontent.com/tangming1996/ai-edge/main/manifests/scripts/install-edge-agent.sh | \\
     GATEWAY_ID=gateway-01 \\
     CONTROL_PLANE_ADDR=ai-edge-apiserver.edgeai-system.svc.cluster.local:9090 \\
     TOKEN=eyJ... \\
@@ -42,6 +56,7 @@ BINARY_URL="${BINARY_URL:-}"
 DATA_DIR="${DATA_DIR:-/var/lib/edge-agent}"
 HTTP_ADDR="${HTTP_ADDR:-:8080}"
 VERSION="${VERSION:-$(curl -s https://api.github.com/repos/${REPO}/releases/latest 2>/dev/null | grep '"tag_name"' | cut -d'"' -f4 || echo "latest")}"
+VERSION="$(normalize_version "$VERSION")"
 
 detect_arch() {
   local arch

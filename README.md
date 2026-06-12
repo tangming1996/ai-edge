@@ -223,7 +223,7 @@ scripts/         安装与联调脚本
 
 ## 发布版本
 
-当前仓库已经支持通过 GitHub Release 自动发布 Docker Hub 镜像和 Linux 二进制。<mccoremem id="03gatqgctkqpwepjbh5e4zy29" />
+当前仓库已经支持通过 GitHub Release 自动发布 Docker Hub 镜像、Linux 二进制，以及 `edgectl` 的 macOS 二进制。<mccoremem id="03gatqgctkqpwepjbh5e4zy29" />
 
 发布前需要在 GitHub 仓库配置以下 Secrets：
 
@@ -254,6 +254,7 @@ git push origin v0.1.0
 - 推送多架构镜像到 `docker.io/<DOCKERHUB_USERNAME>/edgeai-controller`
 - 推送多架构镜像到 `docker.io/<DOCKERHUB_USERNAME>/edgeai-gateway-runtime`
 - 发布 `linux/amd64` 和 `linux/arm64` 的二进制到 GitHub Release
+- 发布 `edgectl` 的 `darwin/amd64` 和 `darwin/arm64` 二进制到 GitHub Release
 - 上传 `checksums.txt`
 
 常用产物示例：
@@ -262,6 +263,7 @@ git push origin v0.1.0
 - Docker 镜像：`docker.io/<namespace>/edgeai-controller:v0.1.0`
 - Docker 镜像：`docker.io/<namespace>/edgeai-gateway-runtime:v0.1.0`
 - Release 资产：`edgectl-linux-amd64`
+- Release 资产：`edgectl-darwin-arm64`
 - Release 资产：`edge-agent-linux-arm64`
 
 标签策略如下：

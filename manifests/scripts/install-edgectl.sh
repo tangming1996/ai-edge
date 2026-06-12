@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="edgeai-platform/ai-edge"
+REPO="${REPO:-tangming1996/ai-edge}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 DOWNLOAD_DIR="$(mktemp -d)"
 VERSION="${VERSION:-latest}"
@@ -16,14 +16,15 @@ Usage: [OPTIONS] bash install-edgectl.sh
 Options:
   VERSION=<ver>     Specific release version (default: latest)
   INSTALL_DIR=<dir> Install directory (default: /usr/local/bin)
+  REPO=<owner/repo> GitHub repository for releases (default: tangming1996/ai-edge)
   ENABLE_SHELL_COMPLETION=yes  Install bash/zsh shell completions
 
 Examples:
   # Install latest
-  curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/manifests/scripts/install-edgectl.sh | bash
+  curl -sL https://raw.githubusercontent.com/tangming1996/ai-edge/main/manifests/scripts/install-edgectl.sh | bash
 
   # Install specific version
-  VERSION=v0.1.0 curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/manifests/scripts/install-edgectl.sh | bash
+  VERSION=v0.1.0 curl -sL https://raw.githubusercontent.com/tangming1996/ai-edge/main/manifests/scripts/install-edgectl.sh | bash
 
   # Dry run (just print download URL)
   DRY_RUN=yes bash install-edgectl.sh
@@ -53,6 +54,19 @@ detect_os() {
   esac
 }
 
+normalize_version() {
+  local version="$1"
+  if [[ -z "$version" ]] || [[ "$version" == "latest" ]]; then
+    echo "$version"
+    return
+  fi
+  if [[ "$version" == v* ]]; then
+    echo "$version"
+    return
+  fi
+  echo "v$version"
+}
+
 echo "==> Detecting system"
 OS=$(detect_os)
 ARCH=$(detect_arch)
@@ -68,6 +82,8 @@ if [[ "$VERSION" == "latest" ]]; then
   fi
   echo "    Version: $VERSION"
 fi
+
+VERSION=$(normalize_version "$VERSION")
 
 if [[ "$VERSION" == "latest" ]]; then
   RELEASE_URL="https://github.com/${REPO}/releases/latest/download/${ASSET_NAME}"

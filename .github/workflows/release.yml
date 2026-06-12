@@ -54,7 +54,7 @@ jobs:
           go-version-file: ${{ env.GO_VERSION_FILE }}
           cache: true
           cache-dependency-path: ${{ env.GO_CACHE_DEPENDENCY_PATH }}
-      - name: Build linux binaries
+      - name: Build release binaries
         run: |
           make checksums \
             VERSION="${GITHUB_REF_NAME}" \
@@ -129,7 +129,8 @@ jobs:
           ## Release Assets
 
           - Linux binaries for: \`apiserver\`, \`controller\`, \`gateway-runtime\`, \`edge-agent\`, \`edgectl\`
-          - Architectures: \`linux/amd64\`, \`linux/arm64\`
+          - macOS binaries for: \`edgectl\`
+          - Architectures: \`linux/amd64\`, \`linux/arm64\`, \`darwin/amd64\`, \`darwin/arm64\`
           - Checksums: \`checksums.txt\`
 
           ## Docker Images
