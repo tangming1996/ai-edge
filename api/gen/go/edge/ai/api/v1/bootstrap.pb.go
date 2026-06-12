@@ -886,7 +886,7 @@ var File_edge_ai_api_v1_bootstrap_proto protoreflect.FileDescriptor
 
 const file_edge_ai_api_v1_bootstrap_proto_rawDesc = "" +
 	"\n" +
-	"\x1eedge/ai/api/v1/bootstrap.proto\x12\x0eedge.ai.api.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bedge/ai/api/v1/common.proto\"\xc2\x02\n" +
+	"\x1eedge/ai/api/v1/bootstrap.proto\x12\x0eedge.ai.api.v1\x1a\x1bedge/ai/api/v1/common.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc2\x02\n" +
 	"\x10BootstrapRequest\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\x12\x1d\n" +
 	"\n" +

@@ -793,7 +793,7 @@ var File_edge_ai_api_v1_deployment_proto protoreflect.FileDescriptor
 
 const file_edge_ai_api_v1_deployment_proto_rawDesc = "" +
 	"\n" +
-	"\x1fedge/ai/api/v1/deployment.proto\x12\x0eedge.ai.api.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bedge/ai/api/v1/common.proto\"y\n" +
+	"\x1fedge/ai/api/v1/deployment.proto\x12\x0eedge.ai.api.v1\x1a\x1bedge/ai/api/v1/common.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"y\n" +
 	"\x10DeploymentTarget\x12\x1f\n" +
 	"\vgateway_ids\x18\x01 \x03(\tR\n" +
 	"gatewayIds\x12D\n" +

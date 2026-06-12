@@ -20,25 +20,32 @@ defaults:
 env:
   GO_VERSION_FILE: go.mod
   GO_CACHE_DEPENDENCY_PATH: go.sum
-  GOLANGCI_LINT_VERSION: v2.12.2
   MIGRATE_VERSION: v4.17.0
   MIGRATE_DATABASE_URL: postgres://postgres:postgres@localhost:5432/edgeai_test?sslmode=disable
 
 jobs:
-  proto:
-    name: Proto Lint & Breaking
+  contracts:
+    name: Proto & Generated Artifacts
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+          cache-dependency-path: ${{ env.GO_CACHE_DEPENDENCY_PATH }}
       - uses: bufbuild/buf-setup-action@v1
-      - run: buf lint
+      - name: Proto lint
+        run: make proto-lint
       - uses: bufbuild/buf-breaking-action@v1
         with:
           against: "https://github.com/${{ github.repository }}.git#branch=main"
+      - name: Verify generated artifacts
+        run: make verify-generate
 
-  go:
-    name: Go Build & Test
+  backend:
+    name: Backend Build & Test
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -48,18 +55,26 @@ jobs:
           go-version-file: ${{ env.GO_VERSION_FILE }}
           cache: true
           cache-dependency-path: ${{ env.GO_CACHE_DEPENDENCY_PATH }}
-
-      - name: Vet
-        run: go vet ./...
-
+      - name: Static checks
+        run: make check
       - name: Build all commands
-        run: |
-          for cmd in apiserver controller gateway-runtime edge-agent edgectl; do
-            go build -o bin/$cmd ./cmd/$cmd
-          done
-
+        run: make build
       - name: Test
-        run: go test -race -cover ./...
+        run: make test
+
+  licenses:
+    name: Verify Licenses
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+          cache-dependency-path: ${{ env.GO_CACHE_DEPENDENCY_PATH }}
+      - name: Verify licenses
+        run: make verify-license
 
   migrations:
     name: Validate Migrations
@@ -91,18 +106,23 @@ jobs:
       - name: Run migrations down
         run: migrate -path migrations -database "${{ env.MIGRATE_DATABASE_URL }}" down -all
 
-  lint:
-    name: golangci-lint
+  images:
+    name: Docker Build Validation
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - apiserver
+          - controller
+          - gateway-runtime
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
         with:
-          go-version-file: ${{ env.GO_VERSION_FILE }}
-          cache: true
-          cache-dependency-path: ${{ env.GO_CACHE_DEPENDENCY_PATH }}
-      - uses: golangci/golangci-lint-action@v9
-        with:
-          version: ${{ env.GOLANGCI_LINT_VERSION }}
-          install-mode: goinstall
+          context: .
+          file: Manifests/dockerfiles/Dockerfile.${{ matrix.service }}
+          platforms: linux/amd64
+          push: false
