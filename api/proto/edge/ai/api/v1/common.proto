@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package edge.ai.api.v1;
+
+// PageRequest provides cursor-based pagination for list operations.
+message PageRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+// PageResponse carries the pagination cursor for the next page.
+message PageResponse {
+  string next_page_token = 1;
+  int32 total_count = 2;
+}
+
+// Labels represents a set of key-value pairs attached to a resource.
+message Labels {
+  map<string, string> items = 1;
+}
+
+// LabelSelector selects resources by matching labels.
+message LabelSelector {
+  map<string, string> match_labels = 1;
+}
+
+// ErrorDetail carries structured business error information alongside gRPC
+// status codes. The reason field holds a business error code (e.g.
+// TOKEN_EXPIRED, IDENTITY_REVOKED) while metadata carries contextual
+// key-value pairs (domain, service, request_id, etc.).
+message ErrorDetail {
+  string reason = 1;
+  string domain = 2;
+  map<string, string> metadata = 3;
+}

@@ -1,0 +1,111 @@
+syntax = "proto3";
+
+package edge.ai.api.v1;
+
+import "google/protobuf/timestamp.proto";
+import "edge/ai/api/v1/common.proto";
+
+// NodeOnboardingService handles node registration and certificate renewal.
+// Implementation lives in Control Plane; gateway-runtime forwards requests.
+service NodeOnboardingService {
+  rpc Bootstrap(BootstrapRequest) returns (BootstrapResponse);
+  rpc Renew(RenewRequest) returns (RenewResponse);
+}
+
+// BootstrapTokenService manages bootstrap tokens for node onboarding.
+service BootstrapTokenService {
+  rpc CreateBootstrapToken(CreateBootstrapTokenRequest) returns (CreateBootstrapTokenResponse);
+  rpc GetBootstrapToken(GetBootstrapTokenRequest) returns (GetBootstrapTokenResponse);
+  rpc ListBootstrapTokens(ListBootstrapTokensRequest) returns (ListBootstrapTokensResponse);
+  rpc FreezeBootstrapToken(FreezeBootstrapTokenRequest) returns (FreezeBootstrapTokenResponse);
+  rpc RevokeBootstrapToken(RevokeBootstrapTokenRequest) returns (RevokeBootstrapTokenResponse);
+}
+
+// ── Bootstrap / Renew ────────────────────────────────────────────
+
+message BootstrapRequest {
+  string token = 1;
+  string gateway_id = 2;
+  bytes csr_pem = 3;
+  string serial = 4;
+  map<string, string> hardware_info = 5;
+  Labels labels = 6;
+}
+
+message BootstrapResponse {
+  string node_id = 1;
+  bytes certificate_pem = 2;
+  bytes ca_pem = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+message RenewRequest {
+  bytes csr_pem = 1;
+}
+
+message RenewResponse {
+  bytes certificate_pem = 1;
+  bytes ca_pem = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+// ── BootstrapToken CRUD ──────────────────────────────────────────
+
+message BootstrapToken {
+  string id = 1;
+  string gateway_id = 2;
+  string description = 3;
+  Labels labels = 4;
+  int32 max_uses = 5;
+  int32 used_count = 6;
+  string status = 7;
+  google.protobuf.Timestamp expires_at = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+message CreateBootstrapTokenRequest {
+  string gateway_id = 1;
+  string description = 2;
+  Labels labels = 3;
+  int32 max_uses = 4;
+  int32 expires_in_seconds = 5;
+}
+
+message CreateBootstrapTokenResponse {
+  BootstrapToken token_metadata = 1;
+  string token_plain = 2;
+}
+
+message GetBootstrapTokenRequest {
+  string id = 1;
+}
+
+message GetBootstrapTokenResponse {
+  BootstrapToken token = 1;
+}
+
+message ListBootstrapTokensRequest {
+  PageRequest page = 1;
+  string gateway_id = 2;
+}
+
+message ListBootstrapTokensResponse {
+  repeated BootstrapToken tokens = 1;
+  PageResponse page = 2;
+}
+
+message FreezeBootstrapTokenRequest {
+  string id = 1;
+}
+
+message FreezeBootstrapTokenResponse {
+  BootstrapToken token = 1;
+}
+
+message RevokeBootstrapTokenRequest {
+  string id = 1;
+}
+
+message RevokeBootstrapTokenResponse {
+  BootstrapToken token = 1;
+}

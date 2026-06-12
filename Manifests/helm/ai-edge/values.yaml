@@ -1,0 +1,198 @@
+global:
+  imageRegistry: tming3379
+  imagePullPolicy: IfNotPresent
+  storageClass: ""
+
+namespace: edgeai-system
+
+imagePullSecrets: []
+
+apiserver:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: edgeai-apiserver
+    tag: "latest"
+  service:
+    type: ClusterIP
+    grpcPort: 9090
+    httpPort: 8080
+  env:
+    DB_SSLMODE: disable
+    GRPC_ADDR: ":9090"
+    HTTP_ADDR: ":8080"
+  caSecretName: ""
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  livenessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  readinessProbe:
+    initialDelaySeconds: 3
+    periodSeconds: 5
+
+controller:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: edgeai-controller
+    tag: "latest"
+  env:
+    DB_SSLMODE: disable
+    POLL_INTERVAL: 10s
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 256Mi
+
+gatewayRuntime:
+  enabled: true
+  image:
+    repository: edgeai-gateway-runtime
+    tag: "latest"
+  service:
+    type: LoadBalancer
+    grpcPort: 9443
+    httpPort: 8081
+  hostNetwork: false
+  nodeSelector:
+    node.edgeai.io/role: gateway
+  tolerations:
+    - key: node.edgeai.io/role
+      value: gateway
+      effect: NoSchedule
+  env:
+    CONTROL_PLANE_ADDR: "ai-edge-apiserver.edgeai-system.svc.cluster.local:9090"
+    HTTP_ADDR: ":8081"
+    GRPC_ADDR: ":9443"
+    CACHE_DIR: "/var/lib/edgeai/gateway-cache"
+    IDENTITY_CACHE_TTL: 30s
+    TASK_CLAIM_DURATION: 5m
+    CONNECTIVITY_CHECK_INTERVAL: 10s
+    CONNECTIVITY_TIMEOUT: 5s
+  gatewayTlsSecretName: ""
+  gatewayCaSecretName: ""
+  minioBucket: edgeai-models
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  livenessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  readinessProbe:
+    initialDelaySeconds: 3
+    periodSeconds: 5
+
+postgresql:
+  enabled: false
+  image:
+    repository: postgres
+    tag: "16-alpine"
+  service:
+    type: ClusterIP
+    port: 5432
+  auth:
+    database: edgeai
+    username: postgres
+    password: postgres
+  persistence:
+    enabled: true
+    storageClass: ""
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  primary:
+    podLabels: {}
+    podAnnotations: {}
+    livenessProbe:
+      initialDelaySeconds: 30
+      periodSeconds: 10
+    readinessProbe:
+      initialDelaySeconds: 5
+      periodSeconds: 5
+
+minio:
+  enabled: false
+  image:
+    repository: minio/minio
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 9000
+    consolePort: 9001
+  auth:
+    rootUser: minioadmin
+    rootPassword: minioadmin
+  persistence:
+    enabled: true
+    storageClass: ""
+    size: 20Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  console:
+    enabled: true
+    service:
+      type: ClusterIP
+  defaultBuckets: "edgeai-models"
+  makeBucketJob:
+    enabled: false
+
+prometheus:
+  enabled: false
+  image:
+    repository: prom/prometheus
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 9090
+  persistence:
+    enabled: true
+    storageClass: ""
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  scrapeInterval: 15s
+  evaluationInterval: 15s
+  ruleFiles: []
+
+db:
+  existingSecret: ""
+  secretName: edgeai-db
+  host: ""
+  port: 5432
+  username: postgres
+  password: postgres
+  database: edgeai
+  sslmode: disable

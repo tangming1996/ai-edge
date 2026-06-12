@@ -1,0 +1,17 @@
+apiVersion: v2
+name: ai-edge
+description: EdgeAI Runtime Platform — secure edge node onboarding, model distribution, and autonomous operation.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - edge-ai
+  - ai-runtime
+  - model-distribution
+  - mtls
+  - gateway
+home: https://github.com/edgeai-platform/ai-edge
+sources:
+  - https://github.com/edgeai-platform/ai-edge
+maintainers:
+  - name: EdgeAI Platform Team

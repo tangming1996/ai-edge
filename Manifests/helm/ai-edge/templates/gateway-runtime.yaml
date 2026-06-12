@@ -1,0 +1,169 @@
+{{- if .Values.gatewayRuntime.enabled }}
+{{- $dbHost := include "ai-edge.dbHost" . }}
+{{- if and (not $dbHost) .Values.postgresql.enabled }}
+{{- $dbHost = printf "%s-postgresql.%s.svc.cluster.local" .Release.Name .Release.Namespace }}
+{{- end }}
+{{- $minioHost := include "ai-edge.minioHost" . }}
+{{- if and (not $minioHost) .Values.minio.enabled }}
+{{- $minioHost = printf "%s-minio.%s.svc.cluster.local" .Release.Name .Release.Namespace }}
+{{- end }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "ai-edge.fullname" . }}-gateway-runtime
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-edge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  selector:
+    matchLabels:
+      {{- include "ai-edge.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: gateway
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        {{- include "ai-edge.labels" . | nindent 8 }}
+        app.kubernetes.io/component: gateway
+    spec:
+      serviceAccountName: {{ include "ai-edge.fullname" . }}-gateway-runtime
+      {{- with .Values.gatewayRuntime.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gatewayRuntime.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.gatewayRuntime.hostNetwork }}
+      hostNetwork: true
+      {{- end }}
+      containers:
+        - name: gateway-runtime
+          image: "{{ include "ai-edge.image" (dict "root" . "image" .Values.gatewayRuntime.image) }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: grpc-mtls
+              containerPort: {{ .Values.gatewayRuntime.service.grpcPort }}
+              hostPort: {{ .Values.gatewayRuntime.service.grpcPort }}
+              protocol: TCP
+            - name: http
+              containerPort: {{ .Values.gatewayRuntime.service.httpPort }}
+              protocol: TCP
+          env:
+            - name: GATEWAY_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: CONTROL_PLANE_ADDR
+              value: {{ .Values.gatewayRuntime.env.CONTROL_PLANE_ADDR }}
+            - name: GRPC_ADDR
+              value: {{ .Values.gatewayRuntime.env.GRPC_ADDR }}
+            - name: HTTP_ADDR
+              value: {{ .Values.gatewayRuntime.env.HTTP_ADDR }}
+            - name: CACHE_DIR
+              value: {{ .Values.gatewayRuntime.env.CACHE_DIR }}
+            {{- if $minioHost }}
+            - name: UPSTREAM_BASE_URL
+              value: {{ printf "http://%s:9000" $minioHost }}
+            {{- end }}
+            - name: IDENTITY_CACHE_TTL
+              value: {{ .Values.gatewayRuntime.env.IDENTITY_CACHE_TTL }}
+            - name: TASK_CLAIM_DURATION
+              value: {{ .Values.gatewayRuntime.env.TASK_CLAIM_DURATION }}
+            - name: CONNECTIVITY_CHECK_INTERVAL
+              value: {{ .Values.gatewayRuntime.env.CONNECTIVITY_CHECK_INTERVAL }}
+            - name: CONNECTIVITY_TIMEOUT
+              value: {{ .Values.gatewayRuntime.env.CONNECTIVITY_TIMEOUT }}
+            {{- if .Values.gatewayRuntime.gatewayTlsSecretName }}
+            - name: GATEWAY_TLS_CERT_PATH
+              value: /etc/edgeai/tls/tls.crt
+            - name: GATEWAY_TLS_KEY_PATH
+              value: /etc/edgeai/tls/tls.key
+            {{- end }}
+            {{- if .Values.gatewayRuntime.gatewayCaSecretName }}
+            - name: GATEWAY_CA_CERT_PATH
+              value: /etc/edgeai/ca/ca.crt
+            {{- end }}
+            {{- if $dbHost }}
+            - name: DB_HOST
+              value: {{ $dbHost | quote }}
+            {{- end }}
+            - name: DB_PORT
+              value: {{ .Values.db.port | quote }}
+            - name: DB_USER
+              value: {{ .Values.db.username }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.db.existingSecret | default .Values.db.secretName }}
+                  key: password
+            - name: DB_NAME
+              value: {{ .Values.db.database }}
+          volumeMounts:
+            {{- if .Values.gatewayRuntime.gatewayTlsSecretName }}
+            - name: tls
+              mountPath: /etc/edgeai/tls
+              readOnly: true
+            {{- end }}
+            {{- if .Values.gatewayRuntime.gatewayCaSecretName }}
+            - name: ca-cert
+              mountPath: /etc/edgeai/ca
+              readOnly: true
+            {{- end }}
+            - name: gateway-cache
+              mountPath: /var/lib/edgeai/gateway-cache
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.gatewayRuntime.service.grpcPort }}
+            initialDelaySeconds: {{ .Values.gatewayRuntime.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.gatewayRuntime.livenessProbe.periodSeconds }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.gatewayRuntime.service.grpcPort }}
+            initialDelaySeconds: {{ .Values.gatewayRuntime.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.gatewayRuntime.readinessProbe.periodSeconds }}
+          resources:
+            {{- toYaml .Values.gatewayRuntime.resources | nindent 10 }}
+      volumes:
+        {{- if .Values.gatewayRuntime.gatewayTlsSecretName }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.gatewayRuntime.gatewayTlsSecretName }}
+        {{- end }}
+        {{- if .Values.gatewayRuntime.gatewayCaSecretName }}
+        - name: ca-cert
+          secret:
+            secretName: {{ .Values.gatewayRuntime.gatewayCaSecretName }}
+        {{- end }}
+        - name: gateway-cache
+          hostPath:
+            path: {{ .Values.gatewayRuntime.env.CACHE_DIR }}
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-edge.fullname" . }}-gateway-runtime
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-edge.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.gatewayRuntime.service.type }}
+  selector:
+    {{- include "ai-edge.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+  ports:
+    - name: grpc-mtls
+      port: {{ .Values.gatewayRuntime.service.grpcPort }}
+      targetPort: grpc-mtls
+      protocol: TCP
+    - name: http
+      port: {{ .Values.gatewayRuntime.service.httpPort }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

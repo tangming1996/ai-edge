@@ -1,0 +1,142 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: edgeai-gateway-runtime
+  namespace: edgeai-system
+  labels:
+    app.kubernetes.io/name: edgeai-gateway-runtime
+    app.kubernetes.io/component: gateway
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: edgeai-gateway-runtime
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: edgeai-gateway-runtime
+        app.kubernetes.io/component: gateway
+    spec:
+      serviceAccountName: edgeai-gateway-runtime
+      nodeSelector:
+        node.edgeai.io/role: gateway
+      tolerations:
+        - key: node.edgeai.io/role
+          value: gateway
+          effect: NoSchedule
+      containers:
+        - name: gateway-runtime
+          image: tming3379/edgeai-gateway-runtime:latest
+          ports:
+            - name: grpc-mtls
+              containerPort: 9443
+              hostPort: 9443
+              protocol: TCP
+            - name: http
+              containerPort: 8081
+              protocol: TCP
+          env:
+            - name: GATEWAY_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: CONTROL_PLANE_ADDR
+              value: edgeai-apiserver.edgeai-system.svc.cluster.local:9090
+            - name: HTTP_ADDR
+              value: :8081
+            - name: CACHE_DIR
+              value: /var/lib/edgeai/gateway-cache
+            - name: UPSTREAM_BASE_URL
+              value: http://minio.edgeai-system.svc.cluster.local:9000
+            - name: GATEWAY_TLS_CERT_PATH
+              value: /etc/edgeai/tls/tls.crt
+            - name: GATEWAY_TLS_KEY_PATH
+              value: /etc/edgeai/tls/tls.key
+            - name: GATEWAY_CA_CERT_PATH
+              value: /etc/edgeai/ca/ca.crt
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: edgeai-db
+                  key: host
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: edgeai-db
+                  key: port
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: edgeai-db
+                  key: user
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: edgeai-db
+                  key: password
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: edgeai-db
+                  key: dbname
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/edgeai/tls
+              readOnly: true
+            - name: ca-cert
+              mountPath: /etc/edgeai/ca
+              readOnly: true
+            - name: gateway-cache
+              mountPath: /var/lib/edgeai/gateway-cache
+          livenessProbe:
+            tcpSocket:
+              port: 9443
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 9443
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: tls
+          secret:
+            secretName: edgeai-gateway-tls
+        - name: ca-cert
+          secret:
+            secretName: edgeai-ca-cert
+        - name: gateway-cache
+          hostPath:
+            path: /var/lib/edgeai/gateway-cache
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: edgeai-gateway-runtime
+  namespace: edgeai-system
+  labels:
+    app.kubernetes.io/name: edgeai-gateway-runtime
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: edgeai-gateway-runtime
+  ports:
+    - name: grpc-mtls
+      port: 9443
+      targetPort: grpc-mtls
+      protocol: TCP
+    - name: http
+      port: 8081
+      targetPort: http
+      protocol: TCP

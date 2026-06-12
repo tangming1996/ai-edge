@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package edge.ai.api.v1;
+
+import "google/protobuf/timestamp.proto";
+import "edge/ai/api/v1/common.proto";
+
+// NodeService provides management RPCs for edge nodes.
+service NodeService {
+  rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
+  rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
+  rpc UpdateNode(UpdateNodeRequest) returns (UpdateNodeResponse);
+}
+
+message EdgeNode {
+  string id = 1;
+  string gateway_id = 2;
+  string name = 3;
+  Labels labels = 4;
+  string status = 5;
+  bool online = 6;
+  string agent_version = 7;
+  map<string, string> hardware_info = 8;
+  google.protobuf.Timestamp last_seen_at = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+message GetNodeRequest {
+  string id = 1;
+}
+
+message GetNodeResponse {
+  EdgeNode node = 1;
+}
+
+message ListNodesRequest {
+  PageRequest page = 1;
+  string gateway_id = 2;
+  string status = 3;
+  LabelSelector label_selector = 4;
+}
+
+message ListNodesResponse {
+  repeated EdgeNode nodes = 1;
+  PageResponse page = 2;
+}
+
+message UpdateNodeRequest {
+  string id = 1;
+  string name = 2;
+  Labels labels = 3;
+}
+
+message UpdateNodeResponse {
+  EdgeNode node = 1;
+}

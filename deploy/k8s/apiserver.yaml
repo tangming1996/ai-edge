@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edgeai-apiserver
+  namespace: edgeai-system
+  labels:
+    app.kubernetes.io/name: edgeai-apiserver
+    app.kubernetes.io/component: control-plane
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: edgeai-apiserver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: edgeai-apiserver
+        app.kubernetes.io/component: control-plane
+    spec:
+      serviceAccountName: edgeai-apiserver
+      containers:
+        - name: apiserver
+          image: tming3379/edgeai-apiserver:latest
+          ports:
+            - name: grpc
+              containerPort: 9090
+              protocol: TCP
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: metrics
+              containerPort: 9091
+              protocol: TCP
+          env:
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: edgeai-db
+                  key: host
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: edgeai-db
+                  key: port
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: edgeai-db
+                  key: user
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: edgeai-db
+                  key: password
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: edgeai-db
+                  key: dbname
+          volumeMounts:
+            - name: ca-keys
+              mountPath: /etc/edgeai/pki
+              readOnly: true
+          livenessProbe:
+            grpc:
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            grpc:
+              port: 9090
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+      volumes:
+        - name: ca-keys
+          secret:
+            secretName: edgeai-ca-keys
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: edgeai-apiserver
+  namespace: edgeai-system
+  labels:
+    app.kubernetes.io/name: edgeai-apiserver
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: edgeai-apiserver
+  ports:
+    - name: grpc
+      port: 9090
+      targetPort: grpc
+      protocol: TCP
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+    - name: metrics
+      port: 9091
+      targetPort: metrics
+      protocol: TCP

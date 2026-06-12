@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO="edgeai-platform/ai-edge"
+INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+DOWNLOAD_DIR="$(mktemp -d)"
+VERSION="${VERSION:-latest}"
+
+cleanup() { rm -rf "$DOWNLOAD_DIR"; }
+trap cleanup EXIT
+
+usage() {
+  cat <<EOF
+Usage: [OPTIONS] bash install-edgectl.sh
+
+Options:
+  VERSION=<ver>     Specific release version (default: latest)
+  INSTALL_DIR=<dir> Install directory (default: /usr/local/bin)
+  ENABLE_SHELL_COMPLETION=yes  Install bash/zsh shell completions
+
+Examples:
+  # Install latest
+  curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/Manifests/scripts/install-edgectl.sh | bash
+
+  # Install specific version
+  VERSION=v0.1.0 curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/Manifests/scripts/install-edgectl.sh | bash
+
+  # Dry run (just print download URL)
+  DRY_RUN=yes bash install-edgectl.sh
+EOF
+  exit 0
+}
+
+[[ "${1:-}" == "-h" ]] || [[ "${1:-}" == "--help" ]] && usage
+
+detect_arch() {
+  local arch
+  arch=$(uname -m)
+  case "$arch" in
+    x86_64) echo "amd64" ;;
+    aarch64|arm64) echo "arm64" ;;
+    *) echo "amd64" ;;
+  esac
+}
+
+detect_os() {
+  local os
+  os=$(uname -s | tr '[:upper:]' '[:lower:]')
+  case "$os" in
+    linux) echo "linux" ;;
+    darwin|macos) echo "darwin" ;;
+    *) echo "linux" ;;
+  esac
+}
+
+echo "==> Detecting system"
+OS=$(detect_os)
+ARCH=$(detect_arch)
+echo "    OS: $OS, Arch: $ARCH"
+
+ASSET_NAME="edgectl-${OS}-${ARCH}"
+if [[ "$VERSION" == "latest" ]]; then
+  echo "==> Resolving latest version from GitHub"
+  VERSION=$(curl -s https://api.github.com/repos/${REPO}/releases/latest 2>/dev/null | grep '"tag_name"' | cut -d'"' -f4 || echo "")
+  if [[ -z "$VERSION" ]]; then
+    echo "    GitHub API unavailable, using asset tag 'latest'"
+    VERSION="latest"
+  fi
+  echo "    Version: $VERSION"
+fi
+
+if [[ "$VERSION" == "latest" ]]; then
+  RELEASE_URL="https://github.com/${REPO}/releases/latest/download/${ASSET_NAME}"
+else
+  RELEASE_URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET_NAME}"
+fi
+
+if [[ "${DRY_RUN:-no}" == "yes" ]]; then
+  echo "==> Dry run - would download: $RELEASE_URL"
+  echo "    Install to: ${INSTALL_DIR}/edgectl"
+  exit 0
+fi
+
+echo "==> Downloading edgectl ${VERSION} for ${OS}/${ARCH}"
+echo "    URL: $RELEASE_URL"
+curl -fsSL "$RELEASE_URL" -o "${DOWNLOAD_DIR}/edgectl" || {
+  echo "ERROR: Failed to download edgectl"
+  echo "       Release asset '${ASSET_NAME}' may not exist for version ${VERSION}"
+  echo "       Check: https://github.com/${REPO}/releases"
+  exit 1
+}
+
+echo "==> Installing edgectl to ${INSTALL_DIR}"
+install -o root -g root -m 755 "${DOWNLOAD_DIR}/edgectl" "${INSTALL_DIR}/edgectl" 2>/dev/null || \
+  install -m 755 "${DOWNLOAD_DIR}/edgectl" "${INSTALL_DIR}/edgectl"
+
+echo "    Installed: ${INSTALL_DIR}/edgectl"
+
+if [[ "${ENABLE_SHELL_COMPLETION:-no}" == "yes" ]]; then
+  echo "==> Installing shell completions"
+  SHELL_NAME="${SHELL_NAME:-$(basename "${SHELL:-bash}")}"
+  if [[ "$SHELL_NAME" == "zsh" ]]; then
+    COMPLETION_DIR="${COMPLETION_DIR:-${HOME}/.zsh/completion}"
+    mkdir -p "$COMPLETION_DIR"
+    "${INSTALL_DIR}/edgectl completion zsh > ${COMPLETION_DIR}/_edgectl" 2>/dev/null && \
+      echo "    Zsh completions: ${COMPLETION_DIR}/_edgectl" || \
+      echo "    Skipped: run 'edgectl completion zsh' manually"
+  else
+    COMPLETION_FILE="${COMPLETION_DIR:-/etc/bash_completion.d}/edgectl"
+    "${INSTALL_DIR}/edgectl completion bash > "$COMPLETION_FILE" 2>/dev/null && \
+      echo "    Bash completions: $COMPLETION_FILE" || \
+      echo "    Skipped: run 'edgectl completion bash' manually"
+  fi
+fi
+
+echo ""
+echo "==> edgectl installed successfully"
+echo "    Run 'edgectl --help' to get started"
+echo ""
+echo "Quick start:"
+echo "  1. Authenticate:     edgectl login --gateway <gateway-addr>"
+echo "  2. Create a token:  edgectl token create --gateway <gateway-id> --expires-in 24h"
+echo "  3. Onboard a node:  Copy the install-edge-agent.sh command from the Helm NOTES"
+echo ""

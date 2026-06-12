@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package edge.ai.api.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// AgentService is called by edge-agent over mTLS.
+service AgentService {
+  rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatResponse);
+  rpc PullTasks(PullTasksRequest) returns (PullTasksResponse);
+  rpc ReportTaskResult(ReportTaskResultRequest) returns (ReportTaskResultResponse);
+  rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsResponse);
+  rpc ReportRuntimeState(ReportRuntimeStateRequest) returns (ReportRuntimeStateResponse);
+}
+
+message ReportHeartbeatRequest {
+  string node_id = 1;
+  string agent_version = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+message ReportHeartbeatResponse {
+  google.protobuf.Timestamp server_time = 1;
+}
+
+message PullTasksRequest {
+  string node_id = 1;
+  int32 max_tasks = 2;
+}
+
+message PullTasksResponse {
+  repeated NodeTask tasks = 1;
+}
+
+message NodeTask {
+  string task_id = 1;
+  string type = 2;
+  bytes payload = 3;
+  int32 timeout_seconds = 4;
+}
+
+message ReportTaskResultRequest {
+  string task_id = 1;
+  string node_id = 2;
+  string status = 3;
+  string error_message = 4;
+  bytes result = 5;
+}
+
+message ReportTaskResultResponse {}
+
+message ReportMetricsRequest {
+  string node_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  map<string, double> metrics = 3;
+}
+
+message ReportMetricsResponse {}
+
+message RuntimeStateEntry {
+  string model_name = 1;
+  string model_version = 2;
+  string runtime = 3;
+  string status = 4;
+  double latency_p95_ms = 5;
+  double tokens_per_sec = 6;
+  double qps = 7;
+}
+
+message ReportRuntimeStateRequest {
+  string node_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  repeated RuntimeStateEntry entries = 3;
+}
+
+message ReportRuntimeStateResponse {}

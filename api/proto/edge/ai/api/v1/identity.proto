@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package edge.ai.api.v1;
+
+import "google/protobuf/timestamp.proto";
+import "edge/ai/api/v1/common.proto";
+
+// IdentityService provides read/management RPCs for edge identities.
+service IdentityService {
+  rpc GetIdentity(GetIdentityRequest) returns (GetIdentityResponse);
+  rpc ListIdentities(ListIdentitiesRequest) returns (ListIdentitiesResponse);
+  rpc RevokeIdentity(RevokeIdentityRequest) returns (RevokeIdentityResponse);
+}
+
+enum IdentityStatus {
+  IDENTITY_STATUS_UNSPECIFIED = 0;
+  IDENTITY_STATUS_ACTIVE = 1;
+  IDENTITY_STATUS_SUSPENDED = 2;
+  IDENTITY_STATUS_REVOKED = 3;
+}
+
+message EdgeIdentity {
+  string id = 1;
+  string node_id = 2;
+  string gateway_id = 3;
+  string serial = 4;
+  string fingerprint = 5;
+  IdentityStatus status = 6;
+  google.protobuf.Timestamp issued_at = 7;
+  google.protobuf.Timestamp expires_at = 8;
+  google.protobuf.Timestamp revoked_at = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+message GetIdentityRequest {
+  string id = 1;
+}
+
+message GetIdentityResponse {
+  EdgeIdentity identity = 1;
+}
+
+message ListIdentitiesRequest {
+  PageRequest page = 1;
+  string node_id = 2;
+  string gateway_id = 3;
+  IdentityStatus status = 4;
+}
+
+message ListIdentitiesResponse {
+  repeated EdgeIdentity identities = 1;
+  PageResponse page = 2;
+}
+
+message RevokeIdentityRequest {
+  string id = 1;
+  string reason = 2;
+}
+
+message RevokeIdentityResponse {
+  EdgeIdentity identity = 1;
+}

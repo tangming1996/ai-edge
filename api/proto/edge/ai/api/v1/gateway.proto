@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package edge.ai.api.v1;
+
+import "google/protobuf/timestamp.proto";
+import "edge/ai/api/v1/common.proto";
+
+// GatewayService manages logical gateways (regions).
+service GatewayService {
+  rpc CreateGateway(CreateGatewayRequest) returns (CreateGatewayResponse);
+  rpc GetGateway(GetGatewayRequest) returns (GetGatewayResponse);
+  rpc ListGateways(ListGatewaysRequest) returns (ListGatewaysResponse);
+  rpc UpdateGateway(UpdateGatewayRequest) returns (UpdateGatewayResponse);
+  rpc DeleteGateway(DeleteGatewayRequest) returns (DeleteGatewayResponse);
+}
+
+message Gateway {
+  string id = 1;
+  string name = 2;
+  string region = 3;
+  Labels labels = 4;
+  string status = 5;
+  string endpoint = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message CreateGatewayRequest {
+  string name = 1;
+  string region = 2;
+  Labels labels = 3;
+  string endpoint = 4;
+}
+
+message CreateGatewayResponse {
+  Gateway gateway = 1;
+}
+
+message GetGatewayRequest {
+  string id = 1;
+}
+
+message GetGatewayResponse {
+  Gateway gateway = 1;
+}
+
+message ListGatewaysRequest {
+  PageRequest page = 1;
+  string region = 2;
+}
+
+message ListGatewaysResponse {
+  repeated Gateway gateways = 1;
+  PageResponse page = 2;
+}
+
+message UpdateGatewayRequest {
+  string id = 1;
+  Labels labels = 2;
+  string endpoint = 3;
+}
+
+message UpdateGatewayResponse {
+  Gateway gateway = 1;
+}
+
+message DeleteGatewayRequest {
+  string id = 1;
+}
+
+message DeleteGatewayResponse {}

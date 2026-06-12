@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package edge.ai.api.v1;
+
+import "google/protobuf/timestamp.proto";
+import "edge/ai/api/v1/common.proto";
+
+// DeploymentService manages model deployments across edge nodes.
+service DeploymentService {
+  rpc CreateDeployment(CreateDeploymentRequest) returns (CreateDeploymentResponse);
+  rpc GetDeployment(GetDeploymentRequest) returns (GetDeploymentResponse);
+  rpc ListDeployments(ListDeploymentsRequest) returns (ListDeploymentsResponse);
+  rpc UpdateDeployment(UpdateDeploymentRequest) returns (UpdateDeploymentResponse);
+}
+
+// DeploymentPhase tracks the lifecycle of a deployment.
+enum DeploymentPhase {
+  DEPLOYMENT_PHASE_UNSPECIFIED = 0;
+  DEPLOYMENT_PHASE_PENDING = 1;
+  DEPLOYMENT_PHASE_ROLLING_OUT = 2;
+  DEPLOYMENT_PHASE_ACTIVE = 3;
+  DEPLOYMENT_PHASE_FAILED = 4;
+  DEPLOYMENT_PHASE_PAUSED = 5;
+}
+
+// DeploymentTarget specifies which nodes should receive the model.
+message DeploymentTarget {
+  repeated string gateway_ids = 1;
+  LabelSelector label_selector = 2;
+}
+
+// RolloutConfig controls how deployments are rolled out.
+message RolloutConfig {
+  int32 max_unavailable = 1;
+}
+
+// DeploymentStatus tracks deployment progress.
+message DeploymentStatus {
+  int32 desired_nodes = 1;
+  int32 ready_nodes = 2;
+  int32 failed_nodes = 3;
+  DeploymentPhase phase = 4;
+}
+
+// ModelDeployment represents a desired deployment of a model to edge nodes.
+message ModelDeployment {
+  string id = 1;
+  string model_name = 2;
+  string model_version = 3;
+  DeploymentTarget target = 4;
+  string runtime = 5;
+  RolloutConfig rollout = 6;
+  DeploymentStatus status = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message CreateDeploymentRequest {
+  string model_name = 1;
+  string model_version = 2;
+  DeploymentTarget target = 3;
+  string runtime = 4;
+  RolloutConfig rollout = 5;
+}
+
+message CreateDeploymentResponse {
+  ModelDeployment deployment = 1;
+}
+
+message GetDeploymentRequest {
+  string id = 1;
+}
+
+message GetDeploymentResponse {
+  ModelDeployment deployment = 1;
+}
+
+message ListDeploymentsRequest {
+  PageRequest page = 1;
+  string model_name = 2;
+  DeploymentPhase phase = 3;
+}
+
+message ListDeploymentsResponse {
+  repeated ModelDeployment deployments = 1;
+  PageResponse page = 2;
+}
+
+message UpdateDeploymentRequest {
+  string id = 1;
+  string runtime = 2;
+  RolloutConfig rollout = 3;
+  DeploymentPhase phase = 4;
+}
+
+message UpdateDeploymentResponse {
+  ModelDeployment deployment = 1;
+}

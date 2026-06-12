@@ -1,0 +1,53 @@
+{{- if .Values.controller.enabled }}
+{{- $dbHost := include "ai-edge.dbHost" . }}
+{{- if and (not $dbHost) .Values.postgresql.enabled }}
+{{- $dbHost = printf "%s-postgresql.%s.svc.cluster.local" .Release.Name .Release.Namespace }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-edge.fullname" . }}-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-edge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  replicas: {{ .Values.controller.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ai-edge.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        {{- include "ai-edge.labels" . | nindent 8 }}
+        app.kubernetes.io/component: controller
+    spec:
+      serviceAccountName: {{ include "ai-edge.fullname" . }}-controller
+      containers:
+        - name: controller
+          image: "{{ include "ai-edge.image" (dict "root" . "image" .Values.controller.image) }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            {{- if $dbHost }}
+            - name: DB_HOST
+              value: {{ $dbHost | quote }}
+            {{- end }}
+            - name: DB_PORT
+              value: {{ .Values.db.port | quote }}
+            - name: DB_USER
+              value: {{ .Values.db.username }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.db.existingSecret | default .Values.db.secretName }}
+                  key: password
+            - name: DB_NAME
+              value: {{ .Values.db.database }}
+            - name: DB_SSLMODE
+              value: {{ .Values.controller.env.DB_SSLMODE | default "disable" }}
+            - name: POLL_INTERVAL
+              value: {{ .Values.controller.env.POLL_INTERVAL }}
+          resources:
+            {{- toYaml .Values.controller.resources | nindent 10 }}
+{{- end }}

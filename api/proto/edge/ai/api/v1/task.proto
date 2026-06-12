@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package edge.ai.api.v1;
+
+import "google/protobuf/timestamp.proto";
+import "edge/ai/api/v1/common.proto";
+
+// TaskService provides management RPCs for tasks.
+service TaskService {
+  rpc CreateTask(CreateTaskRequest) returns (CreateTaskResponse);
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
+}
+
+enum TaskScope {
+  TASK_SCOPE_UNSPECIFIED = 0;
+  TASK_SCOPE_REGION = 1;
+  TASK_SCOPE_NODE = 2;
+}
+
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_PENDING = 1;
+  TASK_STATUS_DISPATCHING = 2;
+  TASK_STATUS_RUNNING = 3;
+  TASK_STATUS_SUCCESS = 4;
+  TASK_STATUS_FAILED = 5;
+  TASK_STATUS_RETRYING = 6;
+  TASK_STATUS_TIMEOUT = 7;
+  TASK_STATUS_CANCELLED = 8;
+  TASK_STATUS_PARTIALLY_SUCCEEDED = 9;
+}
+
+enum DispatchStatus {
+  DISPATCH_STATUS_UNSPECIFIED = 0;
+  DISPATCH_STATUS_UNCLAIMED = 1;
+  DISPATCH_STATUS_CLAIMED = 2;
+  DISPATCH_STATUS_DELIVERED = 3;
+}
+
+message Task {
+  string id = 1;
+  string parent_task_id = 2;
+  TaskScope scope = 3;
+  string type = 4;
+  TaskStatus status = 5;
+  string target_gateway_id = 6;
+  string target_node_id = 7;
+  bytes payload = 8;
+  bytes result = 9;
+
+  DispatchStatus dispatch_status = 10;
+  int32 max_retries = 11;
+  int32 retry_count = 12;
+  int32 timeout_seconds = 13;
+
+  string created_by = 14;
+  google.protobuf.Timestamp created_at = 15;
+  google.protobuf.Timestamp updated_at = 16;
+}
+
+message CreateTaskRequest {
+  string type = 1;
+  TaskScope scope = 2;
+  string target_gateway_id = 3;
+  string target_node_id = 4;
+  bytes payload = 5;
+  int32 max_retries = 6;
+  int32 timeout_seconds = 7;
+  string created_by = 8;
+}
+
+message CreateTaskResponse {
+  Task task = 1;
+}
+
+message GetTaskRequest {
+  string id = 1;
+}
+
+message GetTaskResponse {
+  Task task = 1;
+}
+
+message ListTasksRequest {
+  PageRequest page = 1;
+  string target_gateway_id = 2;
+  string target_node_id = 3;
+  TaskStatus status = 4;
+  string type = 5;
+}
+
+message ListTasksResponse {
+  repeated Task tasks = 1;
+  PageResponse page = 2;
+}
+
+message CancelTaskRequest {
+  string id = 1;
+  string reason = 2;
+}
+
+message CancelTaskResponse {
+  Task task = 1;
+}

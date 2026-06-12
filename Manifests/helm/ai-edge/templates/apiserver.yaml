@@ -1,0 +1,112 @@
+{{- if .Values.apiserver.enabled }}
+{{- $dbHost := include "ai-edge.dbHost" . }}
+{{- if and (not $dbHost) .Values.postgresql.enabled }}
+{{- $dbHost = printf "%s-postgresql.%s.svc.cluster.local" .Release.Name .Release.Namespace }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-edge.fullname" . }}-apiserver
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-edge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+spec:
+  replicas: {{ .Values.apiserver.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ai-edge.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: control-plane
+  template:
+    metadata:
+      labels:
+        {{- include "ai-edge.labels" . | nindent 8 }}
+        app.kubernetes.io/component: control-plane
+    spec:
+      serviceAccountName: {{ include "ai-edge.fullname" . }}-apiserver
+      containers:
+        - name: apiserver
+          image: "{{ include "ai-edge.image" (dict "root" . "image" .Values.apiserver.image) }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.apiserver.service.grpcPort }}
+              protocol: TCP
+            - name: http
+              containerPort: {{ .Values.apiserver.service.httpPort }}
+              protocol: TCP
+          env:
+            {{- if $dbHost }}
+            - name: DB_HOST
+              value: {{ $dbHost | quote }}
+            {{- end }}
+            - name: DB_PORT
+              value: {{ .Values.db.port | quote }}
+            - name: DB_USER
+              value: {{ .Values.db.username }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.db.existingSecret | default .Values.db.secretName }}
+                  key: password
+            - name: DB_NAME
+              value: {{ .Values.db.database }}
+            - name: DB_SSLMODE
+              value: {{ .Values.apiserver.env.DB_SSLMODE | default "disable" }}
+            - name: GRPC_ADDR
+              value: {{ .Values.apiserver.env.GRPC_ADDR }}
+            - name: HTTP_ADDR
+              value: {{ .Values.apiserver.env.HTTP_ADDR }}
+            {{- if .Values.apiserver.caSecretName }}
+            - name: CA_CERT_PATH
+              value: /etc/edgeai/pki/ca.crt
+            - name: CA_KEY_PATH
+              value: /etc/edgeai/pki/ca.key
+            {{- end }}
+          volumeMounts:
+            {{- if .Values.apiserver.caSecretName }}
+            - name: ca-keys
+              mountPath: /etc/edgeai/pki
+              readOnly: true
+            {{- end }}
+          livenessProbe:
+            grpc:
+              port: {{ .Values.apiserver.service.grpcPort }}
+            initialDelaySeconds: {{ .Values.apiserver.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.apiserver.livenessProbe.periodSeconds }}
+          readinessProbe:
+            grpc:
+              port: {{ .Values.apiserver.service.grpcPort }}
+            initialDelaySeconds: {{ .Values.apiserver.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.apiserver.readinessProbe.periodSeconds }}
+          resources:
+            {{- toYaml .Values.apiserver.resources | nindent 10 }}
+      volumes:
+        {{- if .Values.apiserver.caSecretName }}
+        - name: ca-keys
+          secret:
+            secretName: {{ .Values.apiserver.caSecretName }}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-edge.fullname" . }}-apiserver
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-edge.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.apiserver.service.type }}
+  selector:
+    {{- include "ai-edge.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+  ports:
+    - name: grpc
+      port: {{ .Values.apiserver.service.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+    - name: http
+      port: {{ .Values.apiserver.service.httpPort }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package edge.ai.api.v1;
+
+import "google/protobuf/timestamp.proto";
+import "edge/ai/api/v1/common.proto";
+
+// ModelService manages model metadata in the registry.
+service ModelService {
+  rpc CreateModel(CreateModelRequest) returns (CreateModelResponse);
+  rpc GetModel(GetModelRequest) returns (GetModelResponse);
+  rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
+}
+
+// ModelFormat enumerates supported model serialization formats.
+enum ModelFormat {
+  MODEL_FORMAT_UNSPECIFIED = 0;
+  MODEL_FORMAT_ONNX = 1;
+  MODEL_FORMAT_TFLITE = 2;
+  MODEL_FORMAT_GGUF = 3;
+  MODEL_FORMAT_SAFETENSORS = 4;
+  MODEL_FORMAT_CUSTOM = 99;
+}
+
+// Model represents a versioned model artifact stored in the registry.
+message Model {
+  string id = 1;
+  string name = 2;
+  string version = 3;
+  ModelFormat format = 4;
+  string checksum = 5;
+  int64 size = 6;
+  string artifact_uri = 7;
+  string signature_uri = 8;
+  Labels labels = 9;
+  google.protobuf.Timestamp created_at = 10;
+}
+
+message CreateModelRequest {
+  string name = 1;
+  string version = 2;
+  ModelFormat format = 3;
+  string checksum = 4;
+  int64 size = 5;
+  string artifact_uri = 6;
+  string signature_uri = 7;
+  Labels labels = 8;
+}
+
+message CreateModelResponse {
+  Model model = 1;
+}
+
+message GetModelRequest {
+  string id = 1;
+  string name = 2;
+  string version = 3;
+}
+
+message GetModelResponse {
+  Model model = 1;
+}
+
+message ListModelsRequest {
+  PageRequest page = 1;
+  string name = 2;
+  ModelFormat format = 3;
+  LabelSelector label_selector = 4;
+}
+
+message ListModelsResponse {
+  repeated Model models = 1;
+  PageResponse page = 2;
+}

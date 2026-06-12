@@ -1,0 +1,74 @@
+Thank you for installing {{ .Chart.Name }}.
+
+Your release is named {{ .Release.Name }} in namespace {{ .Release.Namespace }}.
+
+To learn more about the release, try:
+
+  $ helm status {{ .Release.Name }}
+  $ helm get all {{ .Release.Name }}
+
+== Component Status ==
+
+{{- if .Values.apiserver.enabled }}
+  [✔] apiserver      : {{ include "ai-edge.fullname" . }}-apiserver
+{{- else }}
+  [x] apiserver      : disabled
+{{- end }}
+
+{{- if .Values.controller.enabled }}
+  [✔] controller     : {{ include "ai-edge.fullname" . }}-controller
+{{- else }}
+  [x] controller     : disabled
+{{- end }}
+
+{{- if .Values.gatewayRuntime.enabled }}
+  [✔] gateway-runtime: {{ include "ai-edge.fullname" . }}-gateway-runtime (DaemonSet)
+{{- else }}
+  [x] gateway-runtime: disabled
+{{- end }}
+
+{{- if .Values.postgresql.enabled }}
+  [✔] postgresql     : {{ .Release.Name }}-postgresql
+{{- else if .Values.db.host }}
+  [✔] postgresql     : external ({{ .Values.db.host }})
+{{- else }}
+  [x] postgresql     : not configured (set db.host)
+{{- end }}
+
+{{- if .Values.minio.enabled }}
+  [✔] minio          : {{ .Release.Name }}-minio
+{{- else if .Values.minio.externalHost }}
+  [✔] minio          : external ({{ .Values.minio.externalHost }})
+{{- else }}
+  [x] minio          : not configured (set minio.externalHost)
+{{- end }}
+
+{{- if .Values.prometheus.enabled }}
+  [✔] prometheus     : {{ .Release.Name }}-prometheus
+{{- else }}
+  [x] prometheus     : disabled
+{{- end }}
+
+== Next Steps ==
+
+1. Create bootstrap tokens for node onboarding:
+   $ kubectl exec -n {{ .Release.Namespace }} deploy/{{ include "ai-edge.fullname" . }}-apiserver -- \
+     edgectl token create --gateway <gateway-id> --expires-in 24h
+
+2. Label gateway nodes:
+   $ kubectl label node <node-name> node.edgeai.io/role=gateway
+
+3. Install edge-agent on edge nodes (run on each node):
+   $ curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/Manifests/scripts/install-edge-agent.sh | \
+       GATEWAY_ID=<gateway-id> \
+       CONTROL_PLANE_ADDR={{ include "ai-edge.fullname" . }}-apiserver.{{ .Release.Namespace }}.svc.cluster.local:443 \
+       TOKEN=<bootstrap-token> \
+       bash
+
+4. Install edgectl on your management machine:
+   $ curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/Manifests/scripts/install-edgectl.sh | bash
+
+== Required Pre-requisites ==
+
+- PostgreSQL database (set `db.host` if external, or enable `postgresql.enabled=true`)
+- TLS certificates for apiserver and gateway-runtime (mounted via secrets referenced in `apiserver.caSecretName` and `gatewayRuntime.gatewayTlsSecretName`)
