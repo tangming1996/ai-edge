@@ -1,8 +1,8 @@
 {
   "gateway_addr": "localhost:9443",
-  "gateway_id": "e7638a3f-e237-4629-b874-3f8c675b40a6",
+  "gateway_id": "xxx",
   "gateway_http_addr": "http://localhost:8082",
-  "token": "ae92a5c5ec07b9997d3cfad4f01f72f18e7812731ee61c453536451abcb4d50a",
+  "token": "xxx",
   "data_dir": "./var/lib/edge-agent",
   "heartbeat_interval": "10s",
   "agent_version": "dev"
