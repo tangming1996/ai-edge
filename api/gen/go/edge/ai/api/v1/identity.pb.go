@@ -506,7 +506,7 @@ var File_edge_ai_api_v1_identity_proto protoreflect.FileDescriptor
 
 const file_edge_ai_api_v1_identity_proto_rawDesc = "" +
 	"\n" +
-	"\x1dedge/ai/api/v1/identity.proto\x12\x0eedge.ai.api.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bedge/ai/api/v1/common.proto\"\xed\x03\n" +
+	"\x1dedge/ai/api/v1/identity.proto\x12\x0eedge.ai.api.v1\x1a\x1bedge/ai/api/v1/common.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xed\x03\n" +
 	"\fEdgeIdentity\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\anode_id\x18\x02 \x01(\tR\x06nodeId\x12\x1d\n" +

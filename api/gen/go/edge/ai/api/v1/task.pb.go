@@ -817,7 +817,7 @@ var File_edge_ai_api_v1_task_proto protoreflect.FileDescriptor
 
 const file_edge_ai_api_v1_task_proto_rawDesc = "" +
 	"\n" +
-	"\x19edge/ai/api/v1/task.proto\x12\x0eedge.ai.api.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bedge/ai/api/v1/common.proto\"\x82\x05\n" +
+	"\x19edge/ai/api/v1/task.proto\x12\x0eedge.ai.api.v1\x1a\x1bedge/ai/api/v1/common.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x82\x05\n" +
 	"\x04Task\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12$\n" +
 	"\x0eparent_task_id\x18\x02 \x01(\tR\fparentTaskId\x12/\n" +

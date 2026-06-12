@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package edge.ai.api.v1;
 
-import "google/protobuf/timestamp.proto";
 import "edge/ai/api/v1/common.proto";
+import "google/protobuf/timestamp.proto";
 
 // GatewayService manages logical gateways (regions).
 service GatewayService {

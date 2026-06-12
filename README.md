@@ -221,6 +221,10 @@ scripts/         安装与联调脚本
 - 更完整的监控、告警与运维手册
 - 标准化安装包、镜像和升级路径
 
+## 许可证
+
+本项目采用 `MIT` 许可证发布。许可证全文见 [LICENSE](./LICENSE)。<mccoremem id="03gat0mt4s8wivxjvvx1k0z9d" />
+
 ## 文档入口
 
 - 总体架构：[README-ARCH.md](./README-ARCH.md)
@@ -237,4 +241,3 @@ scripts/         安装与联调脚本
 
 ```shellscript
 ```
-

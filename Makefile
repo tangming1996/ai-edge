@@ -1,14 +1,40 @@
+SHELL := /bin/bash
+
 MODULE   := github.com/edgeai-platform/ai-edge
 COMMANDS := apiserver controller gateway-runtime edge-agent edgectl
 BIN_DIR  := bin
+LOCALBIN := $(CURDIR)/bin/tools
 
 GO       := go
+GOFMT    := gofmt
 BUF      := buf
-LINT     := golangci-lint
+LINT     := $(LOCALBIN)/golangci-lint
+GOIMPORTS := $(LOCALBIN)/goimports
+GO_LICENSES := $(LOCALBIN)/go-licenses
 
-.PHONY: all build clean proto proto-lint proto-breaking lint vet test migrate-up migrate-down docker-up docker-down help
+GOLANGCI_LINT_VERSION ?= v2.12.2
+GOIMPORTS_VERSION ?= v0.38.0
+GO_LICENSES_VERSION ?= v2.0.1
 
-all: proto build
+.PHONY: all tools build clean generate proto proto-lint proto-breaking format format-go format-proto \
+	format-check format-check-go lint vet check test verify-generate verify-license verify-licence migrate-up migrate-down \
+	docker-up docker-down help
+
+all: generate build
+
+$(LOCALBIN):
+	mkdir -p $(LOCALBIN)
+
+$(LINT): | $(LOCALBIN)
+	GOBIN=$(LOCALBIN) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
+$(GOIMPORTS): | $(LOCALBIN)
+	GOBIN=$(LOCALBIN) $(GO) install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION)
+
+$(GO_LICENSES): | $(LOCALBIN)
+	GOBIN=$(LOCALBIN) $(GO) install github.com/google/go-licenses/v2@$(GO_LICENSES_VERSION)
+
+tools: $(LINT) $(GOIMPORTS) $(GO_LICENSES)
 
 # ── Build ──────────────────────────────────────────────────────────
 
@@ -20,7 +46,9 @@ build-%:
 clean:
 	rm -rf $(BIN_DIR)
 
-# ── Proto / Buf ────────────────────────────────────────────────────
+# ── Code Generation / Proto ───────────────────────────────────────
+
+generate: proto
 
 proto:
 	$(BUF) generate
@@ -31,16 +59,82 @@ proto-lint:
 proto-breaking:
 	$(BUF) breaking --against '.git#branch=main'
 
+# ── Formatting ─────────────────────────────────────────────────────
+
+format: format-go format-proto
+
+format-go: $(GOIMPORTS)
+	find . -type f -name '*.go' \
+		-not -path './.git/*' \
+		-not -path './api/gen/*' \
+		-not -path './bin/*' \
+		-not -path './vendor/*' \
+		-print0 | xargs -0 $(GOIMPORTS) -local $(MODULE) -w
+	find . -type f -name '*.go' \
+		-not -path './.git/*' \
+		-not -path './api/gen/*' \
+		-not -path './bin/*' \
+		-not -path './vendor/*' \
+		-print0 | xargs -0 $(GOFMT) -w
+
+format-proto:
+	$(BUF) format -w
+
+format-check: format-check-go
+
+format-check-go: $(GOIMPORTS)
+	@test -z "$$(find . -type f -name '*.go' \
+		-not -path './.git/*' \
+		-not -path './api/gen/*' \
+		-not -path './bin/*' \
+		-not -path './vendor/*' \
+		-print0 | xargs -0 $(GOFMT) -l)" || \
+		(echo "Go files need gofmt. Run 'make format-go'."; exit 1)
+	@test -z "$$(find . -type f -name '*.go' \
+		-not -path './.git/*' \
+		-not -path './api/gen/*' \
+		-not -path './bin/*' \
+		-not -path './vendor/*' \
+		-print0 | xargs -0 $(GOIMPORTS) -local $(MODULE) -l)" || \
+		(echo "Go files need goimports. Run 'make format-go'."; exit 1)
+
 # ── Go Quality ─────────────────────────────────────────────────────
 
 vet:
 	$(GO) vet ./...
 
-lint:
+lint: $(LINT)
 	$(LINT) run ./...
+
+check: vet lint
 
 test:
 	$(GO) test -race -cover ./...
+
+verify-generate:
+	@set -euo pipefail; \
+		before_diff=$$(mktemp); \
+		before_status=$$(mktemp); \
+		after_diff=$$(mktemp); \
+		after_status=$$(mktemp); \
+		trap 'rm -f "$$before_diff" "$$before_status" "$$after_diff" "$$after_status"' EXIT; \
+		git diff --binary -- api/proto api/gen > "$$before_diff"; \
+		git ls-files -mo --exclude-standard -- api/proto api/gen | sort > "$$before_status"; \
+		$(MAKE) generate; \
+		$(MAKE) format-proto; \
+		git diff --binary -- api/proto api/gen > "$$after_diff"; \
+		git ls-files -mo --exclude-standard -- api/proto api/gen | sort > "$$after_status"; \
+		if ! cmp -s "$$before_diff" "$$after_diff" || ! cmp -s "$$before_status" "$$after_status"; then \
+			echo "Generated artifacts are out of date. Please run 'make generate format-proto' and commit the results."; \
+			git --no-pager status --short -- api/proto api/gen; \
+			git --no-pager diff --stat -- api/proto api/gen; \
+			exit 1; \
+		fi
+
+verify-license: $(GO_LICENSES)
+	GO_LICENSES_BIN=$(GO_LICENSES) bash ./scripts/verify-license.sh
+
+verify-licence: verify-license
 
 # ── Database Migrations (golang-migrate) ───────────────────────────
 
@@ -64,14 +158,24 @@ docker-down:
 
 help:
 	@echo "Targets:"
+	@echo "  tools           Install local developer tools used by the Makefile"
 	@echo "  build           Build all binaries"
 	@echo "  build-<cmd>     Build a single binary (apiserver, controller, ...)"
+	@echo "  generate        Generate project artifacts"
 	@echo "  proto           Generate code from proto files"
 	@echo "  proto-lint      Lint proto files"
 	@echo "  proto-breaking  Check proto backward compatibility"
+	@echo "  format          Format Go and proto sources"
+	@echo "  format-go       Format Go sources with goimports + gofmt"
+	@echo "  format-proto    Format proto sources via buf"
+	@echo "  format-check    Check whether Go sources are formatted"
+	@echo "  check           Run go vet and golangci-lint"
 	@echo "  vet             Run go vet"
 	@echo "  lint            Run golangci-lint"
 	@echo "  test            Run tests with race detector"
+	@echo "  verify-generate Ensure generated and formatted files are up to date"
+	@echo "  verify-license  Verify dependency licenses and repository license presence"
+	@echo "  verify-licence  Alias of verify-license"
 	@echo "  migrate-up      Apply all pending migrations"
 	@echo "  migrate-down    Rollback last migration"
 	@echo "  docker-up       Start local dev dependencies"

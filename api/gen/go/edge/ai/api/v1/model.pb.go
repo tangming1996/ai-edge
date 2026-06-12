@@ -570,7 +570,7 @@ var File_edge_ai_api_v1_model_proto protoreflect.FileDescriptor
 
 const file_edge_ai_api_v1_model_proto_rawDesc = "" +
 	"\n" +
-	"\x1aedge/ai/api/v1/model.proto\x12\x0eedge.ai.api.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bedge/ai/api/v1/common.proto\"\xdd\x02\n" +
+	"\x1aedge/ai/api/v1/model.proto\x12\x0eedge.ai.api.v1\x1a\x1bedge/ai/api/v1/common.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xdd\x02\n" +
 	"\x05Model\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n" +
