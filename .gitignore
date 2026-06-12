@@ -1,5 +1,6 @@
 # Binaries
 bin/
+var/
 *.exe
 *.exe~
 *.dll
@@ -17,6 +18,8 @@ vendor/
 # IDE
 .idea/
 .vscode/
+.cursor/
+.trae/
 *.swp
 *.swo
 *~
