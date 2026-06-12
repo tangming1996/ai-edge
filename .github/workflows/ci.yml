@@ -123,6 +123,6 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: Manifests/dockerfiles/Dockerfile.${{ matrix.service }}
+          file: manifests/dockerfiles/Dockerfile.${{ matrix.service }}
           platforms: linux/amd64
           push: false

@@ -59,14 +59,14 @@ To learn more about the release, try:
    $ kubectl label node <node-name> node.edgeai.io/role=gateway
 
 3. Install edge-agent on edge nodes (run on each node):
-   $ curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/Manifests/scripts/install-edge-agent.sh | \
+   $ curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/manifests/scripts/install-edge-agent.sh | \
        GATEWAY_ID=<gateway-id> \
        CONTROL_PLANE_ADDR={{ include "ai-edge.fullname" . }}-apiserver.{{ .Release.Namespace }}.svc.cluster.local:443 \
        TOKEN=<bootstrap-token> \
        bash
 
 4. Install edgectl on your management machine:
-   $ curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/Manifests/scripts/install-edgectl.sh | bash
+   $ curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/manifests/scripts/install-edgectl.sh | bash
 
 == Required Pre-requisites ==
 

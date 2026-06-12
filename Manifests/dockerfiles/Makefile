@@ -24,7 +24,7 @@ $(IMAGES):
 		--platform $(PLATFORM) \
 		-t $(REGISTRY)/$(IMAGE_PREFIX)$@:latest \
 		-t $(REGISTRY)/$(IMAGE_PREFIX)$@:$$(git rev-parse --short HEAD 2>/dev/null || echo "dev") \
-		-f Manifests/dockerfiles/Dockerfile.$@ \
+		-f manifests/dockerfiles/Dockerfile.$@ \
 		$(if $(filter 1,$(PUSH)),--push,--load) \
 		.
 
@@ -33,7 +33,7 @@ build-%:
 		--platform $(PLATFORM) \
 		-t $(REGISTRY)/$(IMAGE_PREFIX)$*:latest \
 		-t $(REGISTRY)/$(IMAGE_PREFIX)$*:$$(git rev-parse --short HEAD 2>/dev/null || echo "dev") \
-		-f Manifests/dockerfiles/Dockerfile.$* \
+		-f manifests/dockerfiles/Dockerfile.$* \
 		$(if $(filter 1,$(PUSH)),--push,--load) \
 		.
 

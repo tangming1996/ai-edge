@@ -25,7 +25,7 @@ Environment Variables (all optional unless noted):
   HTTP_ADDR            Agent HTTP listen address (default: :8080)
 
 Example:
-  curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/Manifests/scripts/install-edge-agent.sh | \\
+  curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/manifests/scripts/install-edge-agent.sh | \\
     GATEWAY_ID=gateway-01 \\
     CONTROL_PLANE_ADDR=ai-edge-apiserver.edgeai-system.svc.cluster.local:9090 \\
     TOKEN=eyJ... \\

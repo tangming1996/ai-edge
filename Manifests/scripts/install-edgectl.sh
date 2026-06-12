@@ -20,10 +20,10 @@ Options:
 
 Examples:
   # Install latest
-  curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/Manifests/scripts/install-edgectl.sh | bash
+  curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/manifests/scripts/install-edgectl.sh | bash
 
   # Install specific version
-  VERSION=v0.1.0 curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/Manifests/scripts/install-edgectl.sh | bash
+  VERSION=v0.1.0 curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/manifests/scripts/install-edgectl.sh | bash
 
   # Dry run (just print download URL)
   DRY_RUN=yes bash install-edgectl.sh

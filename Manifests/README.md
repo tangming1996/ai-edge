@@ -1,11 +1,11 @@
-# AI Edge — Manifests
+# AI Edge — manifests
 
 本目录包含在 Kubernetes 环境中部署 AI Edge 平台所需的全部配置，包含容器镜像构建和 Helm Chart 两部分。
 
 ## 目录结构
 
 ```
-Manifests/
+manifests/
 ├── dockerfiles/               # Control plane 容器镜像多阶段构建
 │   ├── Dockerfile.apiserver
 │   ├── Dockerfile.controller
@@ -45,7 +45,7 @@ Manifests/
 所有镜像使用 Go 1.25 + alpine:3.20 多阶段构建，自动完成跨平台编译（linux/amd64 + linux/arm64）。
 
 ```bash
-cd Manifests/dockerfiles
+cd manifests/dockerfiles
 
 # 构建并推送到 Docker Hub (tming3379)
 make build
@@ -159,7 +159,7 @@ edge-agent 不通过 Helm 部署，而是在每台边缘服务器上独立安装
 
 ```bash
 # 在每台边缘节点上执行
-curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/Manifests/scripts/install-edge-agent.sh | \
+curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/manifests/scripts/install-edge-agent.sh | \
     GATEWAY_ID=<gateway-id> \
     CONTROL_PLANE_ADDR=ai-edge-apiserver.edgeai-system.svc.cluster.local:9090 \
     TOKEN=<bootstrap-token> \
@@ -180,10 +180,10 @@ edgectl 是云端操作员工具，安装在管理员工作机上：
 
 ```bash
 # 一键安装（最新版本）
-curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/Manifests/scripts/install-edgectl.sh | bash
+curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/manifests/scripts/install-edgectl.sh | bash
 
 # 指定版本
-VERSION=v0.1.0 curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/Manifests/scripts/install-edgectl.sh | bash
+VERSION=v0.1.0 curl -sL https://raw.githubusercontent.com/edgeai-platform/ai-edge/main/manifests/scripts/install-edgectl.sh | bash
 
 # 启用 Shell 补全
 ENABLE_SHELL_COMPLETION=yes bash install-edgectl.sh
