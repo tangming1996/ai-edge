@@ -67,6 +67,39 @@ normalize_version() {
   echo "v$version"
 }
 
+resolve_install_command() {
+  local candidates=("/usr/bin/install" "/bin/install")
+  local discovered=""
+  local probe_src="${DOWNLOAD_DIR}/.install-probe-src"
+  local probe_dst="${DOWNLOAD_DIR}/.install-probe-dst"
+  local candidate
+
+  if discovered=$(command -v install 2>/dev/null); then
+    candidates+=("$discovered")
+  fi
+
+  printf 'probe\n' > "$probe_src"
+  for candidate in "${candidates[@]}"; do
+    [[ -n "$candidate" ]] || continue
+    [[ -x "$candidate" ]] || continue
+    rm -f "$probe_dst"
+    if "$candidate" -m 755 "$probe_src" "$probe_dst" >/dev/null 2>&1 && [[ -f "$probe_dst" ]]; then
+      rm -f "$probe_src" "$probe_dst"
+      echo "$candidate"
+      return
+    fi
+  done
+
+  rm -f "$probe_src" "$probe_dst"
+  echo "ERROR: Could not find a working 'install' command" >&2
+  if discovered=$(command -v install 2>/dev/null); then
+    echo "       Detected install: ${discovered}" >&2
+  fi
+  echo "       Expected a system install tool such as /usr/bin/install" >&2
+  echo "       Your shell environment may be overriding 'install'" >&2
+  exit 1
+}
+
 echo "==> Detecting system"
 OS=$(detect_os)
 ARCH=$(detect_arch)
@@ -107,8 +140,10 @@ curl -fsSL "$RELEASE_URL" -o "${DOWNLOAD_DIR}/edgectl" || {
 }
 
 echo "==> Installing edgectl to ${INSTALL_DIR}"
-install -o root -g root -m 755 "${DOWNLOAD_DIR}/edgectl" "${INSTALL_DIR}/edgectl" 2>/dev/null || \
-  install -m 755 "${DOWNLOAD_DIR}/edgectl" "${INSTALL_DIR}/edgectl"
+INSTALL_BIN=$(resolve_install_command)
+echo "    Using install: ${INSTALL_BIN}"
+"${INSTALL_BIN}" -o root -g root -m 755 "${DOWNLOAD_DIR}/edgectl" "${INSTALL_DIR}/edgectl" 2>/dev/null || \
+  "${INSTALL_BIN}" -m 755 "${DOWNLOAD_DIR}/edgectl" "${INSTALL_DIR}/edgectl"
 
 echo "    Installed: ${INSTALL_DIR}/edgectl"
 
@@ -118,12 +153,12 @@ if [[ "${ENABLE_SHELL_COMPLETION:-no}" == "yes" ]]; then
   if [[ "$SHELL_NAME" == "zsh" ]]; then
     COMPLETION_DIR="${COMPLETION_DIR:-${HOME}/.zsh/completion}"
     mkdir -p "$COMPLETION_DIR"
-    "${INSTALL_DIR}/edgectl completion zsh > ${COMPLETION_DIR}/_edgectl" 2>/dev/null && \
+    "${INSTALL_DIR}/edgectl" completion zsh > "${COMPLETION_DIR}/_edgectl" 2>/dev/null && \
       echo "    Zsh completions: ${COMPLETION_DIR}/_edgectl" || \
       echo "    Skipped: run 'edgectl completion zsh' manually"
   else
     COMPLETION_FILE="${COMPLETION_DIR:-/etc/bash_completion.d}/edgectl"
-    "${INSTALL_DIR}/edgectl completion bash > "$COMPLETION_FILE" 2>/dev/null && \
+    "${INSTALL_DIR}/edgectl" completion bash > "$COMPLETION_FILE" 2>/dev/null && \
       echo "    Bash completions: $COMPLETION_FILE" || \
       echo "    Skipped: run 'edgectl completion bash' manually"
   fi
