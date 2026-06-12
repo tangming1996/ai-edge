@@ -5,9 +5,10 @@ import (
 	"log"
 	"time"
 
-	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
 )
 
 // RunHeartbeat sends periodic heartbeats until ctx is cancelled.

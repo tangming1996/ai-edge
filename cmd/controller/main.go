@@ -27,7 +27,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("controller: connect database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("controller: close database: %v", err)
+		}
+	}()
 
 	pollInterval := envOrDefaultDuration("POLL_INTERVAL", 10*time.Second)
 	taskCreator := deployment.NewDeploymentTaskCreator(db)

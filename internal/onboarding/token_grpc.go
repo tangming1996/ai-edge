@@ -3,14 +3,16 @@ package onboarding
 import (
 	"context"
 	"database/sql"
+	"log"
 	"strconv"
 	"time"
 
-	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
-	"github.com/edgeai-platform/ai-edge/internal/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
+	"github.com/edgeai-platform/ai-edge/internal/store"
 )
 
 // TokenGRPC implements pb.BootstrapTokenServiceServer.
@@ -114,7 +116,11 @@ func (s *TokenGRPC) ListBootstrapTokens(
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "list tokens: %v", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("token_grpc: close rows: %v", err)
+		}
+	}()
 
 	var tokens []*pb.BootstrapToken
 	for rows.Next() {
@@ -166,14 +172,14 @@ func (s *TokenGRPC) RevokeBootstrapToken(
 
 func recToProto(rec *TokenRecord) *pb.BootstrapToken {
 	return &pb.BootstrapToken{
-		Id:        rec.ID,
-		GatewayId: rec.GatewayID,
+		Id:          rec.ID,
+		GatewayId:   rec.GatewayID,
 		Description: rec.Description,
-		MaxUses:   int32(rec.MaxUses),
-		UsedCount: int32(rec.UsedCount),
-		Status:    rec.Status,
-		ExpiresAt: timestamppb.New(rec.ExpiresAt),
-		CreatedAt: timestamppb.New(rec.CreatedAt),
+		MaxUses:     int32(rec.MaxUses),
+		UsedCount:   int32(rec.UsedCount),
+		Status:      rec.Status,
+		ExpiresAt:   timestamppb.New(rec.ExpiresAt),
+		CreatedAt:   timestamppb.New(rec.CreatedAt),
 	}
 }
 

@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"strconv"
 
-	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
-	"github.com/edgeai-platform/ai-edge/internal/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
+	"github.com/edgeai-platform/ai-edge/internal/store"
 )
 
 var phaseToText = map[pb.DeploymentPhase]string{

@@ -7,18 +7,18 @@ import (
 
 // Business error reasons surfaced via gRPC status + ErrorInfo.
 const (
-	ReasonTokenNotFound     = "TOKEN_NOT_FOUND"
-	ReasonTokenExpired      = "TOKEN_EXPIRED"
-	ReasonTokenExhausted    = "TOKEN_EXHAUSTED"
-	ReasonTokenFrozen       = "TOKEN_FROZEN"
-	ReasonTokenRevoked      = "TOKEN_REVOKED"
-	ReasonGatewayMismatch   = "GATEWAY_MISMATCH"
-	ReasonIdentityConflict  = "IDENTITY_CONFLICT"
-	ReasonCSRInvalid        = "CSR_INVALID"
-	ReasonIdentityRevoked   = "IDENTITY_REVOKED"
-	ReasonIdentityNotFound  = "IDENTITY_NOT_FOUND"
-	ReasonNodeNotFound      = "NODE_NOT_FOUND"
-	ReasonRenewNotAllowed   = "RENEW_NOT_ALLOWED"
+	ReasonTokenNotFound    = "TOKEN_NOT_FOUND"
+	ReasonTokenExpired     = "TOKEN_EXPIRED"
+	ReasonTokenExhausted   = "TOKEN_EXHAUSTED"
+	ReasonTokenFrozen      = "TOKEN_FROZEN"
+	ReasonTokenRevoked     = "TOKEN_REVOKED"
+	ReasonGatewayMismatch  = "GATEWAY_MISMATCH"
+	ReasonIdentityConflict = "IDENTITY_CONFLICT"
+	ReasonCSRInvalid       = "CSR_INVALID"
+	ReasonIdentityRevoked  = "IDENTITY_REVOKED"
+	ReasonIdentityNotFound = "IDENTITY_NOT_FOUND"
+	ReasonNodeNotFound     = "NODE_NOT_FOUND"
+	ReasonRenewNotAllowed  = "RENEW_NOT_ALLOWED"
 )
 
 func errTokenNotFound() error {

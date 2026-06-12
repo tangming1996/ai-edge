@@ -4,15 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"text/tabwriter"
 	"time"
 
-	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+
+	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
 )
 
 var (
@@ -76,12 +78,20 @@ func tokenCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a bootstrap token",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(_ *cobra.Command, _ []string) (err error) {
 			conn, err := dial()
 			if err != nil {
 				return err
 			}
-			defer conn.Close()
+			defer func() {
+				if closeErr := conn.Close(); closeErr != nil {
+					if err == nil {
+						err = fmt.Errorf("close bootstrap token connection: %w", closeErr)
+						return
+					}
+					log.Printf("edgectl: close bootstrap token connection: %v", closeErr)
+				}
+			}()
 
 			dur, err := time.ParseDuration(expiresIn)
 			if err != nil {
@@ -121,12 +131,20 @@ func tokenListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List bootstrap tokens",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(_ *cobra.Command, _ []string) (err error) {
 			conn, err := dial()
 			if err != nil {
 				return err
 			}
-			defer conn.Close()
+			defer func() {
+				if closeErr := conn.Close(); closeErr != nil {
+					if err == nil {
+						err = fmt.Errorf("close bootstrap token connection: %w", closeErr)
+						return
+					}
+					log.Printf("edgectl: close bootstrap token connection: %v", closeErr)
+				}
+			}()
 
 			client := pb.NewBootstrapTokenServiceClient(conn)
 			resp, err := client.ListBootstrapTokens(authCtx(), &pb.ListBootstrapTokensRequest{
@@ -137,12 +155,16 @@ func tokenListCmd() *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-			fmt.Fprintln(w, "ID\tGATEWAY\tSTATUS\tUSED/MAX\tEXPIRES")
+			if _, err := fmt.Fprintln(w, "ID\tGATEWAY\tSTATUS\tUSED/MAX\tEXPIRES"); err != nil {
+				return err
+			}
 			for _, t := range resp.GetTokens() {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%d/%d\t%s\n",
+				if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%d/%d\t%s\n",
 					t.GetId(), t.GetGatewayId(), t.GetStatus(),
 					t.GetUsedCount(), t.GetMaxUses(),
-					t.GetExpiresAt().AsTime().Format(time.RFC3339))
+					t.GetExpiresAt().AsTime().Format(time.RFC3339)); err != nil {
+					return err
+				}
 			}
 			return w.Flush()
 		},
@@ -168,12 +190,20 @@ func nodeListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List nodes under a gateway",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(_ *cobra.Command, _ []string) (err error) {
 			conn, err := dial()
 			if err != nil {
 				return err
 			}
-			defer conn.Close()
+			defer func() {
+				if closeErr := conn.Close(); closeErr != nil {
+					if err == nil {
+						err = fmt.Errorf("close node connection: %w", closeErr)
+						return
+					}
+					log.Printf("edgectl: close node connection: %v", closeErr)
+				}
+			}()
 
 			client := pb.NewNodeServiceClient(conn)
 			resp, err := client.ListNodes(authCtx(), &pb.ListNodesRequest{
@@ -184,15 +214,19 @@ func nodeListCmd() *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-			fmt.Fprintln(w, "ID\tGATEWAY\tSTATUS\tONLINE\tVERSION\tLAST SEEN")
+			if _, err := fmt.Fprintln(w, "ID\tGATEWAY\tSTATUS\tONLINE\tVERSION\tLAST SEEN"); err != nil {
+				return err
+			}
 			for _, n := range resp.GetNodes() {
 				lastSeen := "N/A"
 				if n.GetLastSeenAt() != nil {
 					lastSeen = n.GetLastSeenAt().AsTime().Format(time.RFC3339)
 				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%v\t%s\t%s\n",
+				if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%v\t%s\t%s\n",
 					n.GetId(), n.GetGatewayId(), n.GetStatus(),
-					n.GetOnline(), n.GetAgentVersion(), lastSeen)
+					n.GetOnline(), n.GetAgentVersion(), lastSeen); err != nil {
+					return err
+				}
 			}
 			return w.Flush()
 		},
@@ -207,12 +241,20 @@ func nodeRevokeCmd() *cobra.Command {
 		Use:   "revoke <node-id>",
 		Short: "Revoke a node's identity",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) (err error) {
 			conn, err := dial()
 			if err != nil {
 				return err
 			}
-			defer conn.Close()
+			defer func() {
+				if closeErr := conn.Close(); closeErr != nil {
+					if err == nil {
+						err = fmt.Errorf("close identity connection: %w", closeErr)
+						return
+					}
+					log.Printf("edgectl: close identity connection: %v", closeErr)
+				}
+			}()
 
 			client := pb.NewIdentityServiceClient(conn)
 			_, err = client.RevokeIdentity(authCtx(), &pb.RevokeIdentityRequest{
@@ -250,12 +292,20 @@ func deploymentCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a model deployment task",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(_ *cobra.Command, _ []string) (err error) {
 			conn, err := dial()
 			if err != nil {
 				return err
 			}
-			defer conn.Close()
+			defer func() {
+				if closeErr := conn.Close(); closeErr != nil {
+					if err == nil {
+						err = fmt.Errorf("close deployment connection: %w", closeErr)
+						return
+					}
+					log.Printf("edgectl: close deployment connection: %v", closeErr)
+				}
+			}()
 
 			payload, _ := json.Marshal(map[string]string{
 				"model":      model,
@@ -306,12 +356,20 @@ func taskListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List tasks for a gateway",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(_ *cobra.Command, _ []string) (err error) {
 			conn, err := dial()
 			if err != nil {
 				return err
 			}
-			defer conn.Close()
+			defer func() {
+				if closeErr := conn.Close(); closeErr != nil {
+					if err == nil {
+						err = fmt.Errorf("close task connection: %w", closeErr)
+						return
+					}
+					log.Printf("edgectl: close task connection: %v", closeErr)
+				}
+			}()
 
 			client := pb.NewTaskServiceClient(conn)
 			resp, err := client.ListTasks(authCtx(), &pb.ListTasksRequest{
@@ -322,12 +380,16 @@ func taskListCmd() *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-			fmt.Fprintln(w, "ID\tTYPE\tSTATUS\tGATEWAY\tNODE\tCREATED")
+			if _, err := fmt.Fprintln(w, "ID\tTYPE\tSTATUS\tGATEWAY\tNODE\tCREATED"); err != nil {
+				return err
+			}
 			for _, t := range resp.GetTasks() {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 					t.GetId(), t.GetType(), t.GetStatus(),
 					t.GetTargetGatewayId(), t.GetTargetNodeId(),
-					t.GetCreatedAt().AsTime().Format(time.RFC3339))
+					t.GetCreatedAt().AsTime().Format(time.RFC3339)); err != nil {
+					return err
+				}
 			}
 			return w.Flush()
 		},
@@ -342,12 +404,20 @@ func taskGetCmd() *cobra.Command {
 		Use:   "get <task-id>",
 		Short: "Get task details",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) (err error) {
 			conn, err := dial()
 			if err != nil {
 				return err
 			}
-			defer conn.Close()
+			defer func() {
+				if closeErr := conn.Close(); closeErr != nil {
+					if err == nil {
+						err = fmt.Errorf("close task connection: %w", closeErr)
+						return
+					}
+					log.Printf("edgectl: close task connection: %v", closeErr)
+				}
+			}()
 
 			client := pb.NewTaskServiceClient(conn)
 			resp, err := client.GetTask(authCtx(), &pb.GetTaskRequest{

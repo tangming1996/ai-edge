@@ -132,7 +132,12 @@ func (lc *LogCollector) upload(ctx context.Context, url string, data []byte, p C
 	if err != nil {
 		return fmt.Errorf("upload: %w", err)
 	}
-	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("log_collector: close upload response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("upload status %d", resp.StatusCode)

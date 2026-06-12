@@ -59,7 +59,9 @@ func New(cfg Config) (*DB, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			return nil, fmt.Errorf("store: ping db: %w (close db: %v)", err, closeErr)
+		}
 		return nil, fmt.Errorf("store: ping db: %w", err)
 	}
 

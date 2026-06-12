@@ -13,10 +13,11 @@ import (
 	"log"
 	"os"
 
-	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+
+	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
 )
 
 // Identity holds the result of a successful bootstrap.
@@ -104,7 +105,11 @@ func bootstrap(ctx context.Context, cfg *Config) (*Identity, error) {
 	if err != nil {
 		return nil, fmt.Errorf("agent: dial gateway: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Printf("agent: close bootstrap connection: %v", err)
+		}
+	}()
 
 	client := pb.NewNodeOnboardingServiceClient(conn)
 	resp, err := client.Bootstrap(ctx, &pb.BootstrapRequest{

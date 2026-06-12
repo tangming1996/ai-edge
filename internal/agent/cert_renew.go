@@ -14,8 +14,9 @@ import (
 	"os"
 	"time"
 
-	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
 	"google.golang.org/grpc"
+
+	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
 )
 
 const defaultRenewThreshold = 30 * 24 * time.Hour

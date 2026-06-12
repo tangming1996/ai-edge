@@ -32,10 +32,10 @@ type ArtifactHandlerConfig struct {
 
 // ArtifactHandler serves model artifacts with HTTP Range support.
 type ArtifactHandler struct {
-	models     *modelstore.Store
-	cache      *CacheStore
-	gatewayID  string
-	cacheDir   string
+	models       *modelstore.Store
+	cache        *CacheStore
+	gatewayID    string
+	cacheDir     string
 	upstreamBase string
 }
 
@@ -104,7 +104,11 @@ func (h *ArtifactHandler) serveModel(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "open artifact", http.StatusInternalServerError)
 		return
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Printf("artifact: close local file: %v", err)
+		}
+	}()
 
 	stat, err := f.Stat()
 	if err != nil {
@@ -124,7 +128,11 @@ func (h *ArtifactHandler) fetchFromUpstream(artifactURI, dest string) error {
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("artifact: close upstream response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("GET %s: status %d", url, resp.StatusCode)
@@ -142,14 +150,22 @@ func (h *ArtifactHandler) fetchFromUpstream(artifactURI, dest string) error {
 
 	hasher := sha256.New()
 	if _, err := io.Copy(f, io.TeeReader(resp.Body, hasher)); err != nil {
-		f.Close()
-		os.Remove(tmp)
+		if closeErr := f.Close(); closeErr != nil {
+			log.Printf("artifact: close temp file after copy error: %v", closeErr)
+		}
+		if removeErr := os.Remove(tmp); removeErr != nil && !os.IsNotExist(removeErr) {
+			log.Printf("artifact: remove temp file after copy error: %v", removeErr)
+		}
 		return fmt.Errorf("download: %w", err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close tmp: %w", err)
+	}
 
 	if err := os.Rename(tmp, dest); err != nil {
-		os.Remove(tmp)
+		if removeErr := os.Remove(tmp); removeErr != nil && !os.IsNotExist(removeErr) {
+			log.Printf("artifact: remove temp file after rename error: %v", removeErr)
+		}
 		return fmt.Errorf("rename: %w", err)
 	}
 	return nil
@@ -187,7 +203,11 @@ func VerifyChecksum(path, expected string) error {
 	if err != nil {
 		return fmt.Errorf("open for checksum: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Printf("artifact: close checksum file: %v", err)
+		}
+	}()
 
 	hasher := sha256.New()
 	if _, err := io.Copy(hasher, f); err != nil {

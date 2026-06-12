@@ -3,9 +3,10 @@ package gateway
 import (
 	"context"
 
-	apiv1 "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
+
+	apiv1 "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
 )
 
 // OnboardingProxy forwards Bootstrap and Renew requests to the Control Plane.

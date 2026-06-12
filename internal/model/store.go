@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/edgeai-platform/ai-edge/internal/store"
@@ -146,7 +147,11 @@ func (s *Store) List(ctx context.Context, f ListFilter) ([]*ModelRow, int, error
 	if err != nil {
 		return nil, 0, fmt.Errorf("model: list: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("model: close rows: %v", err)
+		}
+	}()
 
 	var result []*ModelRow
 	for rows.Next() {

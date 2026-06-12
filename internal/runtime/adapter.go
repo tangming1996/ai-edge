@@ -11,9 +11,9 @@ type Status struct {
 
 // InstallConfig holds parameters for installing a model runtime.
 type InstallConfig struct {
-	ModelName    string            `json:"model_name"`
-	ModelVersion string            `json:"model_version"`
-	ArtifactURI  string            `json:"artifact_uri"`
+	ModelName     string            `json:"model_name"`
+	ModelVersion  string            `json:"model_version"`
+	ArtifactURI   string            `json:"artifact_uri"`
 	RuntimeConfig map[string]string `json:"runtime_config,omitempty"`
 }
 

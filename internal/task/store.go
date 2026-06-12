@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/edgeai-platform/ai-edge/internal/store"
@@ -168,7 +169,11 @@ func (s *Store) ListTasks(ctx context.Context, f ListFilter) ([]*TaskRow, int, e
 	if err != nil {
 		return nil, 0, fmt.Errorf("list tasks: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("task: close list rows: %v", err)
+		}
+	}()
 
 	var result []*TaskRow
 	for rows.Next() {

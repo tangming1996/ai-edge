@@ -15,13 +15,14 @@ import (
 	"syscall"
 	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
+
 	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
 	"github.com/edgeai-platform/ai-edge/internal/gateway"
 	"github.com/edgeai-platform/ai-edge/internal/observability"
 	"github.com/edgeai-platform/ai-edge/internal/store"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -43,14 +44,22 @@ func main() {
 	if err != nil {
 		log.Fatalf("gateway-runtime: connect database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("gateway-runtime: close database: %v", err)
+		}
+	}()
 
 	controlPlaneAddr := envOrDefault("CONTROL_PLANE_ADDR", "localhost:9090")
 	upstreamConn, err := grpc.NewClient(controlPlaneAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("gateway-runtime: dial control plane: %v", err)
 	}
-	defer upstreamConn.Close()
+	defer func() {
+		if err := upstreamConn.Close(); err != nil {
+			log.Printf("gateway-runtime: close control plane connection: %v", err)
+		}
+	}()
 
 	identityCache := gateway.NewIdentityCache(gateway.IdentityCacheConfig{
 		DB:  db,

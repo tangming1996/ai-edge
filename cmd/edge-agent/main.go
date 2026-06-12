@@ -11,10 +11,11 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/edgeai-platform/ai-edge/internal/agent"
-	edgeruntime "github.com/edgeai-platform/ai-edge/internal/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/edgeai-platform/ai-edge/internal/agent"
+	edgeruntime "github.com/edgeai-platform/ai-edge/internal/runtime"
 )
 
 func main() {
@@ -50,7 +51,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("edge-agent: dial gateway: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Printf("edge-agent: close gateway connection: %v", err)
+		}
+	}()
 
 	runtimeManager := edgeruntime.NewManager()
 	runtimeManager.Register(edgeruntime.NewLlamaCppAdapter(cfg.DataDir))

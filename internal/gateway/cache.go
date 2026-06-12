@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/edgeai-platform/ai-edge/internal/store"
@@ -105,7 +106,11 @@ func (c *CacheStore) ListByGateway(ctx context.Context, gatewayID string) ([]*Ca
 	if err != nil {
 		return nil, fmt.Errorf("cache: list: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("cache: close rows: %v", err)
+		}
+	}()
 
 	var result []*CacheEntry
 	for rows.Next() {

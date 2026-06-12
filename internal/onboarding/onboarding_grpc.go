@@ -4,14 +4,15 @@ import (
 	"context"
 	"crypto/tls"
 
-	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
-	"github.com/edgeai-platform/ai-edge/internal/pki"
-	"github.com/edgeai-platform/ai-edge/internal/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
+	"github.com/edgeai-platform/ai-edge/internal/pki"
+	"github.com/edgeai-platform/ai-edge/internal/store"
 )
 
 // OnboardingGRPC implements pb.NodeOnboardingServiceServer.
@@ -101,4 +102,3 @@ func nodeIDFromTLSState(state tls.ConnectionState) string {
 	}
 	return state.PeerCertificates[0].Subject.CommonName
 }
-

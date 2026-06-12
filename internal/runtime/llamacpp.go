@@ -11,8 +11,8 @@ import (
 type LlamaCppAdapter struct {
 	dataDir string
 
-	mu       sync.Mutex
-	running  map[string]bool // key: "modelName:modelVersion"
+	mu      sync.Mutex
+	running map[string]bool // key: "modelName:modelVersion"
 }
 
 // NewLlamaCppAdapter creates a new llama.cpp runtime adapter.

@@ -5,14 +5,16 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strconv"
 	"time"
 
-	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
-	"github.com/edgeai-platform/ai-edge/internal/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
+	"github.com/edgeai-platform/ai-edge/internal/store"
 )
 
 // NodeGRPC implements pb.NodeServiceServer.
@@ -100,7 +102,11 @@ func (s *NodeGRPC) ListNodes(ctx context.Context, req *pb.ListNodesRequest) (*pb
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "list nodes: %v", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("node_service: close rows: %v", err)
+		}
+	}()
 
 	var nodes []*pb.EdgeNode
 	for rows.Next() {

@@ -7,11 +7,11 @@ import (
 
 // Sentinel errors for business-layer mapping.
 var (
-	ErrNotFound        = errors.New("not found")
-	ErrConflict        = errors.New("conflict")
-	ErrAlreadyExists   = errors.New("already exists")
+	ErrNotFound         = errors.New("not found")
+	ErrConflict         = errors.New("conflict")
+	ErrAlreadyExists    = errors.New("already exists")
 	ErrPermissionDenied = errors.New("permission denied")
-	ErrPrecondition    = errors.New("precondition failed")
+	ErrPrecondition     = errors.New("precondition failed")
 )
 
 // IsUniqueViolation checks whether a Postgres error is a unique_violation

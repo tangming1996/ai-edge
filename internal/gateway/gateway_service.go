@@ -5,14 +5,16 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strconv"
 	"time"
 
-	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
-	"github.com/edgeai-platform/ai-edge/internal/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
+	"github.com/edgeai-platform/ai-edge/internal/store"
 )
 
 // GatewayManagementService implements pb.GatewayServiceServer.
@@ -124,7 +126,11 @@ func (svc *GatewayManagementService) ListGateways(
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "list gateways: %v", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("gateway_service: close rows: %v", err)
+		}
+	}()
 
 	var gateways []*pb.Gateway
 	for rows.Next() {

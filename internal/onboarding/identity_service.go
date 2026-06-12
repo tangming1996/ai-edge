@@ -4,14 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strconv"
 	"time"
 
-	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
-	"github.com/edgeai-platform/ai-edge/internal/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
+	"github.com/edgeai-platform/ai-edge/internal/store"
 )
 
 // IdentityGRPC implements pb.IdentityServiceServer.
@@ -103,7 +105,11 @@ func (s *IdentityGRPC) ListIdentities(ctx context.Context, req *pb.ListIdentitie
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "list identities: %v", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("identity_service: close rows: %v", err)
+		}
+	}()
 
 	var identities []*pb.EdgeIdentity
 	for rows.Next() {

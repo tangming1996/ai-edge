@@ -72,9 +72,9 @@ func (r *MetricRegistry) Snapshot() map[string]float64 {
 
 // Reporter handles incoming metrics and runtime state reports from edge agents.
 type Reporter struct {
-	registry       *MetricRegistry
-	deployStore    *deployment.Store
-	db             *store.DB
+	registry    *MetricRegistry
+	deployStore *deployment.Store
+	db          *store.DB
 }
 
 // NewReporter creates a Reporter.

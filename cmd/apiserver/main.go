@@ -11,6 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/reflection"
+
 	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
 	"github.com/edgeai-platform/ai-edge/internal/deployment"
 	"github.com/edgeai-platform/ai-edge/internal/gateway"
@@ -19,10 +24,6 @@ import (
 	"github.com/edgeai-platform/ai-edge/internal/pki"
 	"github.com/edgeai-platform/ai-edge/internal/store"
 	"github.com/edgeai-platform/ai-edge/internal/task"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/reflection"
 )
 
 func main() {
@@ -39,7 +40,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("apiserver: connect database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("apiserver: close database: %v", err)
+		}
+	}()
 
 	signer, err := initSigner()
 	if err != nil {
@@ -77,7 +82,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("apiserver: dial gRPC for gateway: %v", err)
 	}
-	defer gwConn.Close()
+	defer func() {
+		if err := gwConn.Close(); err != nil {
+			log.Printf("apiserver: close gateway connection: %v", err)
+		}
+	}()
 
 	registerGatewayHandlers(ctx, gwMux, gwConn)
 

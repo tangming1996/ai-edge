@@ -79,12 +79,12 @@ func (u *Updater) Execute(ctx context.Context, taskType string, payload []byte) 
 	}
 
 	if err := u.verifyChecksum(tmpPath, manifest.SHA256); err != nil {
-		os.Remove(tmpPath)
+		removeWithLog(tmpPath, "updater: remove invalid binary after checksum failure")
 		return nil, err
 	}
 
 	if err := u.verifySignature(manifest.SHA256, manifest.Signature); err != nil {
-		os.Remove(tmpPath)
+		removeWithLog(tmpPath, "updater: remove invalid binary after signature failure")
 		return nil, err
 	}
 
@@ -133,7 +133,7 @@ func (u *Updater) downloadBinary(ctx context.Context, url, dest string) error {
 	if err != nil {
 		return fmt.Errorf("updater: download: %w", err)
 	}
-	defer resp.Body.Close()
+	defer closeWithLog(resp.Body, "updater: close download response body")
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("updater: download status %d", resp.StatusCode)
@@ -145,8 +145,8 @@ func (u *Updater) downloadBinary(ctx context.Context, url, dest string) error {
 	}
 
 	if _, err := io.Copy(f, resp.Body); err != nil {
-		f.Close()
-		os.Remove(dest)
+		closeWithLog(f, "updater: close temp binary after copy error")
+		removeWithLog(dest, "updater: remove temp binary after copy error")
 		return fmt.Errorf("updater: write: %w", err)
 	}
 	return f.Close()
@@ -157,7 +157,7 @@ func (u *Updater) verifyChecksum(path, expected string) error {
 	if err != nil {
 		return fmt.Errorf("updater: open for checksum: %w", err)
 	}
-	defer f.Close()
+	defer closeWithLog(f, "updater: close checksum file")
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {

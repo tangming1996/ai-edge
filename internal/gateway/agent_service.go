@@ -4,16 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
 	"github.com/edgeai-platform/ai-edge/internal/observability"
 	"github.com/edgeai-platform/ai-edge/internal/store"
 	"github.com/edgeai-platform/ai-edge/internal/task"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // AgentService implements pb.AgentServiceServer for edge-agent traffic.
@@ -102,7 +104,11 @@ func (s *AgentService) PullTasks(ctx context.Context, req *pb.PullTasksRequest) 
 		if err != nil {
 			return fmt.Errorf("query node tasks: %w", err)
 		}
-		defer rows.Close()
+		defer func() {
+			if err := rows.Close(); err != nil {
+				log.Printf("agent_service: close task rows: %v", err)
+			}
+		}()
 
 		for rows.Next() {
 			var (

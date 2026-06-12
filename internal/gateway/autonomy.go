@@ -129,7 +129,9 @@ func (cm *ConnectivityMonitor) checkHealth() bool {
 	if err != nil {
 		return false
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		log.Printf("gateway: close health response body: %v", err)
+	}
 	return resp.StatusCode < 500
 }
 

@@ -9,8 +9,9 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
 	"google.golang.org/grpc"
+
+	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
 )
 
 // TaskExecutor is the interface that concrete task handlers must implement.

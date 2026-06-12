@@ -78,7 +78,7 @@ func (d *Downloader) Download(name, version, expectedChecksum string) (*Download
 
 	if expectedChecksum != "" {
 		if err := verifyFileSHA256(destPath, expectedChecksum); err != nil {
-			os.Remove(destPath)
+			removeWithLog(destPath, "downloader: remove invalid artifact")
 			return nil, fmt.Errorf("downloader: checksum: %w", err)
 		}
 	}
@@ -125,7 +125,7 @@ func (d *Downloader) downloadWithResume(name, version, dest string) error {
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer closeWithLog(resp.Body, "downloader: close response body")
 
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -150,10 +150,12 @@ func (d *Downloader) downloadWithResume(name, version, dest string) error {
 	}
 
 	if _, err := io.Copy(f, resp.Body); err != nil {
-		f.Close()
+		closeWithLog(f, "downloader: close partial file after copy error")
 		return fmt.Errorf("copy: %w", err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close part: %w", err)
+	}
 
 	return os.Rename(partPath, dest)
 }
@@ -218,7 +220,7 @@ func fileSHA256(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer closeWithLog(f, "downloader: close checksum file")
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
@@ -236,4 +238,16 @@ func verifyFileSHA256(path, expected string) error {
 		return fmt.Errorf("sha256 mismatch: got %s, want %s", got, expected)
 	}
 	return nil
+}
+
+func closeWithLog(closer io.Closer, message string) {
+	if err := closer.Close(); err != nil {
+		log.Printf("%s: %v", message, err)
+	}
+}
+
+func removeWithLog(path, message string) {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		log.Printf("%s %s: %v", message, path, err)
+	}
 }

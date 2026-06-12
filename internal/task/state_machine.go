@@ -8,42 +8,35 @@ import (
 
 // statusToProto maps DB text status to proto enum.
 var statusToProto = map[string]pb.TaskStatus{
-	"Pending":              pb.TaskStatus_TASK_STATUS_PENDING,
-	"Dispatching":          pb.TaskStatus_TASK_STATUS_DISPATCHING,
-	"Running":              pb.TaskStatus_TASK_STATUS_RUNNING,
-	"Success":              pb.TaskStatus_TASK_STATUS_SUCCESS,
-	"Failed":               pb.TaskStatus_TASK_STATUS_FAILED,
-	"Retrying":             pb.TaskStatus_TASK_STATUS_RETRYING,
-	"Timeout":              pb.TaskStatus_TASK_STATUS_TIMEOUT,
-	"Cancelled":            pb.TaskStatus_TASK_STATUS_CANCELLED,
-	"PartiallySucceeded":   pb.TaskStatus_TASK_STATUS_PARTIALLY_SUCCEEDED,
+	"Pending":            pb.TaskStatus_TASK_STATUS_PENDING,
+	"Dispatching":        pb.TaskStatus_TASK_STATUS_DISPATCHING,
+	"Running":            pb.TaskStatus_TASK_STATUS_RUNNING,
+	"Success":            pb.TaskStatus_TASK_STATUS_SUCCESS,
+	"Failed":             pb.TaskStatus_TASK_STATUS_FAILED,
+	"Retrying":           pb.TaskStatus_TASK_STATUS_RETRYING,
+	"Timeout":            pb.TaskStatus_TASK_STATUS_TIMEOUT,
+	"Cancelled":          pb.TaskStatus_TASK_STATUS_CANCELLED,
+	"PartiallySucceeded": pb.TaskStatus_TASK_STATUS_PARTIALLY_SUCCEEDED,
 }
 
 // protoToStatus maps proto enum to DB text status.
 var protoToStatus = map[pb.TaskStatus]string{
-	pb.TaskStatus_TASK_STATUS_PENDING:              "Pending",
-	pb.TaskStatus_TASK_STATUS_DISPATCHING:          "Dispatching",
-	pb.TaskStatus_TASK_STATUS_RUNNING:              "Running",
-	pb.TaskStatus_TASK_STATUS_SUCCESS:              "Success",
-	pb.TaskStatus_TASK_STATUS_FAILED:               "Failed",
-	pb.TaskStatus_TASK_STATUS_RETRYING:             "Retrying",
-	pb.TaskStatus_TASK_STATUS_TIMEOUT:              "Timeout",
-	pb.TaskStatus_TASK_STATUS_CANCELLED:            "Cancelled",
-	pb.TaskStatus_TASK_STATUS_PARTIALLY_SUCCEEDED:  "PartiallySucceeded",
+	pb.TaskStatus_TASK_STATUS_PENDING:             "Pending",
+	pb.TaskStatus_TASK_STATUS_DISPATCHING:         "Dispatching",
+	pb.TaskStatus_TASK_STATUS_RUNNING:             "Running",
+	pb.TaskStatus_TASK_STATUS_SUCCESS:             "Success",
+	pb.TaskStatus_TASK_STATUS_FAILED:              "Failed",
+	pb.TaskStatus_TASK_STATUS_RETRYING:            "Retrying",
+	pb.TaskStatus_TASK_STATUS_TIMEOUT:             "Timeout",
+	pb.TaskStatus_TASK_STATUS_CANCELLED:           "Cancelled",
+	pb.TaskStatus_TASK_STATUS_PARTIALLY_SUCCEEDED: "PartiallySucceeded",
 }
 
 // dispatchToProto maps DB text dispatch status to proto enum.
 var dispatchToProto = map[string]pb.DispatchStatus{
-	"Unclaimed":  pb.DispatchStatus_DISPATCH_STATUS_UNCLAIMED,
-	"Claimed":    pb.DispatchStatus_DISPATCH_STATUS_CLAIMED,
-	"Delivered":  pb.DispatchStatus_DISPATCH_STATUS_DELIVERED,
-}
-
-// protoToDispatch maps proto enum to DB text dispatch status.
-var protoToDispatch = map[pb.DispatchStatus]string{
-	pb.DispatchStatus_DISPATCH_STATUS_UNCLAIMED:  "Unclaimed",
-	pb.DispatchStatus_DISPATCH_STATUS_CLAIMED:    "Claimed",
-	pb.DispatchStatus_DISPATCH_STATUS_DELIVERED:  "Delivered",
+	"Unclaimed": pb.DispatchStatus_DISPATCH_STATUS_UNCLAIMED,
+	"Claimed":   pb.DispatchStatus_DISPATCH_STATUS_CLAIMED,
+	"Delivered": pb.DispatchStatus_DISPATCH_STATUS_DELIVERED,
 }
 
 // scopeToProto maps DB text scope to proto enum.
@@ -60,10 +53,10 @@ var protoToScope = map[pb.TaskScope]string{
 
 // terminalStatuses are states that cannot transition further.
 var terminalStatuses = map[pb.TaskStatus]bool{
-	pb.TaskStatus_TASK_STATUS_SUCCESS:              true,
-	pb.TaskStatus_TASK_STATUS_CANCELLED:            true,
-	pb.TaskStatus_TASK_STATUS_TIMEOUT:              true,
-	pb.TaskStatus_TASK_STATUS_PARTIALLY_SUCCEEDED:  true,
+	pb.TaskStatus_TASK_STATUS_SUCCESS:             true,
+	pb.TaskStatus_TASK_STATUS_CANCELLED:           true,
+	pb.TaskStatus_TASK_STATUS_TIMEOUT:             true,
+	pb.TaskStatus_TASK_STATUS_PARTIALLY_SUCCEEDED: true,
 }
 
 // allowedTransitions defines valid (from → to) status transitions.

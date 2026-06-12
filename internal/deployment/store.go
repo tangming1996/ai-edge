@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/edgeai-platform/ai-edge/internal/store"
@@ -173,7 +174,11 @@ func (s *Store) ListDeployments(ctx context.Context, f DeploymentListFilter) ([]
 	if err != nil {
 		return nil, 0, fmt.Errorf("deployment: list: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("deployment: close deployment rows: %v", err)
+		}
+	}()
 
 	var result []*DeploymentRow
 	for rows.Next() {
@@ -202,7 +207,11 @@ func (s *Store) ListPendingDeployments(ctx context.Context) ([]*DeploymentRow, e
 	if err != nil {
 		return nil, fmt.Errorf("deployment: list pending: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("deployment: close pending deployment rows: %v", err)
+		}
+	}()
 
 	var result []*DeploymentRow
 	for rows.Next() {
@@ -304,7 +313,11 @@ func (s *Store) ListRuntimeProfiles(ctx context.Context) ([]*RuntimeProfileRow, 
 	if err != nil {
 		return nil, fmt.Errorf("runtime profile: list: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("deployment: close runtime profile rows: %v", err)
+		}
+	}()
 
 	var result []*RuntimeProfileRow
 	for rows.Next() {
@@ -391,7 +404,11 @@ func (s *Store) ListNodesByGatewayAndLabels(ctx context.Context, gatewayIDs []st
 	if err != nil {
 		return nil, fmt.Errorf("deployment: list target nodes: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("deployment: close target node rows: %v", err)
+		}
+	}()
 
 	var ids []string
 	for rows.Next() {

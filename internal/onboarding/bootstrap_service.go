@@ -13,9 +13,9 @@ import (
 
 // BootstrapService handles node registration and certificate renewal.
 type BootstrapService struct {
-	db     *store.DB
-	tokens *TokenStore
-	signer *pki.Signer
+	db             *store.DB
+	tokens         *TokenStore
+	signer         *pki.Signer
 	renewThreshold time.Duration // renew allowed when remaining < this
 }
 
@@ -41,10 +41,10 @@ type BootstrapInput struct {
 
 // BootstrapOutput is the result of a successful Bootstrap.
 type BootstrapOutput struct {
-	NodeID     string
-	CertPEM    []byte
-	CAPEM      []byte
-	ExpiresAt  time.Time
+	NodeID    string
+	CertPEM   []byte
+	CAPEM     []byte
+	ExpiresAt time.Time
 }
 
 // Bootstrap performs atomic node registration: validate token → create node →
