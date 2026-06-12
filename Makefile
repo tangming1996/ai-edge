@@ -3,6 +3,7 @@ SHELL := /bin/bash
 MODULE   := github.com/edgeai-platform/ai-edge
 COMMANDS := apiserver controller gateway-runtime edge-agent edgectl
 BIN_DIR  := bin
+DIST_DIR := dist
 LOCALBIN := $(CURDIR)/bin/tools
 
 GO       := go
@@ -15,9 +16,17 @@ GO_LICENSES := $(LOCALBIN)/go-licenses
 GOLANGCI_LINT_VERSION ?= v2.12.2
 GOIMPORTS_VERSION ?= v0.38.0
 GO_LICENSES_VERSION ?= v2.0.1
+VERSION ?= dev
+GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+VERSION_PKG := $(MODULE)/internal/version
+LDFLAGS := -s -w \
+	-X $(VERSION_PKG).Version=$(VERSION) \
+	-X $(VERSION_PKG).Commit=$(GIT_COMMIT) \
+	-X $(VERSION_PKG).BuildDate=$(BUILD_DATE)
 
 .PHONY: all tools build clean generate proto proto-lint proto-breaking format format-go format-proto \
-	format-check format-check-go lint vet check test verify-generate verify-license verify-licence migrate-up migrate-down \
+	format-check format-check-go lint vet check test verify-generate verify-license verify-licence release-binaries checksums migrate-up migrate-down \
 	docker-up docker-down help
 
 all: generate build
@@ -40,11 +49,15 @@ tools: $(LINT) $(GOIMPORTS) $(GO_LICENSES)
 
 build: $(addprefix build-,$(COMMANDS))
 
+$(BIN_DIR):
+	mkdir -p $(BIN_DIR)
+
 build-%:
-	$(GO) build -o $(BIN_DIR)/$* ./cmd/$*
+	@mkdir -p $(BIN_DIR)
+	$(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN_DIR)/$* ./cmd/$*
 
 clean:
-	rm -rf $(BIN_DIR)
+	rm -rf $(BIN_DIR) $(DIST_DIR)
 
 # ── Code Generation / Proto ───────────────────────────────────────
 
@@ -136,6 +149,19 @@ verify-license: $(GO_LICENSES)
 
 verify-licence: verify-license
 
+release-binaries:
+	@mkdir -p $(DIST_DIR)
+	@set -euo pipefail; \
+	for arch in amd64 arm64; do \
+		for cmd in $(COMMANDS); do \
+			echo "Building $$cmd for linux/$$arch"; \
+			CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(DIST_DIR)/$$cmd-linux-$$arch ./cmd/$$cmd; \
+		done; \
+	done
+
+checksums: release-binaries
+	@cd $(DIST_DIR) && shasum -a 256 * > checksums.txt
+
 # ── Database Migrations (golang-migrate) ───────────────────────────
 
 DB_URL ?= postgres://postgres:postgres@localhost:5433/edgeai?sslmode=disable
@@ -176,6 +202,8 @@ help:
 	@echo "  verify-generate Ensure generated and formatted files are up to date"
 	@echo "  verify-license  Verify dependency licenses and repository license presence"
 	@echo "  verify-licence  Alias of verify-license"
+	@echo "  release-binaries Build linux release binaries for amd64 and arm64"
+	@echo "  checksums       Build release binaries and generate SHA256 checksums"
 	@echo "  migrate-up      Apply all pending migrations"
 	@echo "  migrate-down    Rollback last migration"
 	@echo "  docker-up       Start local dev dependencies"

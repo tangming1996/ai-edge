@@ -221,6 +221,54 @@ scripts/         安装与联调脚本
 - 更完整的监控、告警与运维手册
 - 标准化安装包、镜像和升级路径
 
+## 发布版本
+
+当前仓库已经支持通过 GitHub Release 自动发布 Docker Hub 镜像和 Linux 二进制。<mccoremem id="03gatqgctkqpwepjbh5e4zy29" />
+
+发布前需要在 GitHub 仓库配置以下 Secrets：
+
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
+
+可选配置：
+
+- `Repository Variable: DOCKERHUB_NAMESPACE`
+
+如果未设置 `DOCKERHUB_NAMESPACE`，发布流程默认使用 `DOCKERHUB_USERNAME` 作为 Docker Hub 命名空间。
+
+发布正式版本的最小步骤如下：
+
+```bash
+git add .
+git commit -m "Prepare release v0.1.0"
+git push origin main
+
+git tag -a v0.1.0 -m "Release v0.1.0"
+git push origin v0.1.0
+```
+
+推送 `v*` 标签后会自动执行：
+
+- 运行 `make check`、`make test`、`make verify-generate`、`make verify-license`
+- 推送多架构镜像到 `docker.io/<DOCKERHUB_USERNAME>/edgeai-apiserver`
+- 推送多架构镜像到 `docker.io/<DOCKERHUB_USERNAME>/edgeai-controller`
+- 推送多架构镜像到 `docker.io/<DOCKERHUB_USERNAME>/edgeai-gateway-runtime`
+- 发布 `linux/amd64` 和 `linux/arm64` 的二进制到 GitHub Release
+- 上传 `checksums.txt`
+
+常用产物示例：
+
+- Docker 镜像：`docker.io/<namespace>/edgeai-apiserver:v0.1.0`
+- Docker 镜像：`docker.io/<namespace>/edgeai-controller:v0.1.0`
+- Docker 镜像：`docker.io/<namespace>/edgeai-gateway-runtime:v0.1.0`
+- Release 资产：`edgectl-linux-amd64`
+- Release 资产：`edge-agent-linux-arm64`
+
+标签策略如下：
+
+- 正式版本，如 `v0.1.0`：发布版本标签并更新 Docker `latest`
+- 预发布版本，如 `v0.1.0-rc.1`：只发布对应版本标签，不更新 Docker `latest`
+
 ## 许可证
 
 本项目采用 `MIT` 许可证发布。许可证全文见 [LICENSE](./LICENSE)。<mccoremem id="03gat0mt4s8wivxjvvx1k0z9d" />
@@ -232,12 +280,3 @@ scripts/         安装与联调脚本
 - 详细设计：[docs/design/README.md](./docs/design/README.md)
 - API 契约：`api/proto/edge/ai/api/v1`
 - 部署样例：`deploy/`
-
-<br />
-
-<br />
-
-./bin/edgectl --server localhost:9091 token create --gateway e7638a3f-e237-4629-b874-3f8c675b40a6 --expires-in 24h --max-uses 10 --description "dev-token"
-
-```shellscript
-```

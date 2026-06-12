@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -23,9 +24,15 @@ import (
 	"github.com/edgeai-platform/ai-edge/internal/gateway"
 	"github.com/edgeai-platform/ai-edge/internal/observability"
 	"github.com/edgeai-platform/ai-edge/internal/store"
+	buildversion "github.com/edgeai-platform/ai-edge/internal/version"
 )
 
 func main() {
+	if buildversion.ShouldPrint(os.Args[1:]) {
+		fmt.Println(buildversion.Info("gateway-runtime"))
+		return
+	}
+
 	gatewayID := envOrDefault("GATEWAY_ID", "")
 	if gatewayID == "" {
 		log.Fatal("gateway-runtime: GATEWAY_ID is required")
@@ -45,8 +52,8 @@ func main() {
 		log.Fatalf("gateway-runtime: connect database: %v", err)
 	}
 	defer func() {
-		if err := db.Close(); err != nil {
-			log.Printf("gateway-runtime: close database: %v", err)
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("gateway-runtime: close database: %v", closeErr)
 		}
 	}()
 
@@ -56,8 +63,8 @@ func main() {
 		log.Fatalf("gateway-runtime: dial control plane: %v", err)
 	}
 	defer func() {
-		if err := upstreamConn.Close(); err != nil {
-			log.Printf("gateway-runtime: close control plane connection: %v", err)
+		if closeErr := upstreamConn.Close(); closeErr != nil {
+			log.Printf("gateway-runtime: close control plane connection: %v", closeErr)
 		}
 	}()
 
@@ -146,7 +153,7 @@ func main() {
 		}
 	}()
 
-	log.Printf("gateway-runtime: started gateway_id=%s control_plane=%s", gatewayID, controlPlaneAddr)
+	log.Printf("gateway-runtime: started gateway_id=%s control_plane=%s %s", gatewayID, controlPlaneAddr, buildversion.String())
 	<-ctx.Done()
 	log.Println("gateway-runtime: shutting down...")
 

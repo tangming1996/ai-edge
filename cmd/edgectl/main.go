@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
+	buildversion "github.com/edgeai-platform/ai-edge/internal/version"
 )
 
 var (
@@ -24,17 +25,28 @@ var (
 
 func main() {
 	root := &cobra.Command{
-		Use:   "edgectl",
-		Short: "EdgeAI Runtime Platform CLI",
+		Use:     "edgectl",
+		Short:   "EdgeAI Runtime Platform CLI",
+		Version: buildversion.Version,
 	}
 
 	root.PersistentFlags().StringVar(&serverAddr, "server", envOrDefault("EDGECTL_SERVER", "localhost:9090"), "gRPC server address")
 	root.PersistentFlags().StringVar(&authToken, "token", os.Getenv("EDGECTL_TOKEN"), "Bearer token for admin auth")
 
-	root.AddCommand(tokenCmd(), nodeCmd(), deploymentCmd(), taskCmd())
+	root.AddCommand(tokenCmd(), nodeCmd(), deploymentCmd(), taskCmd(), versionCmd())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
+	}
+}
+
+func versionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print edgectl version information",
+		Run: func(_ *cobra.Command, _ []string) {
+			fmt.Println(buildversion.Info("edgectl"))
+		},
 	}
 }
 

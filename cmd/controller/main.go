@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -11,9 +12,15 @@ import (
 
 	"github.com/edgeai-platform/ai-edge/internal/deployment"
 	"github.com/edgeai-platform/ai-edge/internal/store"
+	buildversion "github.com/edgeai-platform/ai-edge/internal/version"
 )
 
 func main() {
+	if buildversion.ShouldPrint(os.Args[1:]) {
+		fmt.Println(buildversion.Info("controller"))
+		return
+	}
+
 	cfg := store.Config{
 		Host:     envOrDefault("DB_HOST", "localhost"),
 		Port:     envOrDefaultInt("DB_PORT", 5432),
@@ -42,7 +49,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	log.Printf("controller: started (poll_interval=%s)", pollInterval)
+	log.Printf("controller: started (poll_interval=%s) %s", pollInterval, buildversion.String())
 	controller.Run(ctx)
 	log.Println("controller: stopped")
 }

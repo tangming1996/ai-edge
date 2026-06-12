@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -24,9 +25,15 @@ import (
 	"github.com/edgeai-platform/ai-edge/internal/pki"
 	"github.com/edgeai-platform/ai-edge/internal/store"
 	"github.com/edgeai-platform/ai-edge/internal/task"
+	buildversion "github.com/edgeai-platform/ai-edge/internal/version"
 )
 
 func main() {
+	if buildversion.ShouldPrint(os.Args[1:]) {
+		fmt.Println(buildversion.Info("apiserver"))
+		return
+	}
+
 	cfg := store.Config{
 		Host:     envOrDefault("DB_HOST", "localhost"),
 		Port:     envOrDefaultInt("DB_PORT", 5432),
@@ -41,8 +48,8 @@ func main() {
 		log.Fatalf("apiserver: connect database: %v", err)
 	}
 	defer func() {
-		if err := db.Close(); err != nil {
-			log.Printf("apiserver: close database: %v", err)
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("apiserver: close database: %v", closeErr)
 		}
 	}()
 
@@ -66,8 +73,8 @@ func main() {
 
 	go func() {
 		log.Printf("apiserver: gRPC listening on %s", grpcAddr)
-		if err := grpcServer.Serve(grpcLis); err != nil {
-			log.Fatalf("apiserver: gRPC serve: %v", err)
+		if serveErr := grpcServer.Serve(grpcLis); serveErr != nil {
+			log.Fatalf("apiserver: gRPC serve: %v", serveErr)
 		}
 	}()
 
@@ -101,6 +108,8 @@ func main() {
 			log.Fatalf("apiserver: HTTP serve: %v", err)
 		}
 	}()
+
+	log.Printf("apiserver: starting %s", buildversion.String())
 
 	// --- graceful shutdown ---
 	sigCh := make(chan os.Signal, 1)

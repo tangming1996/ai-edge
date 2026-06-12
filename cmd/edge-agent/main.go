@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -16,16 +17,23 @@ import (
 
 	"github.com/edgeai-platform/ai-edge/internal/agent"
 	edgeruntime "github.com/edgeai-platform/ai-edge/internal/runtime"
+	buildversion "github.com/edgeai-platform/ai-edge/internal/version"
 )
 
 func main() {
 	configPath := flag.String("config", "/etc/edge-agent/config.json", "Path to edge-agent config file")
+	showVersion := flag.Bool("version", false, "Print version information and exit")
 	flag.Parse()
+	if *showVersion || buildversion.ShouldPrint(os.Args[1:]) {
+		fmt.Println(buildversion.Info("edge-agent"))
+		return
+	}
 
 	cfg, err := agent.LoadConfig(*configPath)
 	if err != nil {
 		log.Fatalf("edge-agent: load config: %v", err)
 	}
+	cfg.AgentVersion = buildversion.EffectiveVersion(cfg.AgentVersion)
 	if mkdirErr := os.MkdirAll(cfg.DataDir, 0755); mkdirErr != nil {
 		log.Fatalf("edge-agent: prepare data dir: %v", mkdirErr)
 	}
@@ -90,7 +98,7 @@ func main() {
 	go taskRunner.Run(ctx)
 	go renewer.Run(ctx)
 
-	log.Printf("edge-agent: started node_id=%s gateway=%s", identity.NodeID, cfg.GatewayAddr)
+	log.Printf("edge-agent: started node_id=%s gateway=%s %s", identity.NodeID, cfg.GatewayAddr, buildversion.String())
 	<-ctx.Done()
 	log.Println("edge-agent: stopping...")
 	log.Println("edge-agent: stopped")

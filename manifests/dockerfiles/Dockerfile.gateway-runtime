@@ -2,6 +2,9 @@ FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
+ARG VERSION=dev
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
 
 WORKDIR /src
 
@@ -12,7 +15,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -ldflags="-s -w" -o /bin/gateway-runtime ./cmd/gateway-runtime
+    go build -trimpath \
+      -ldflags="-s -w -X github.com/edgeai-platform/ai-edge/internal/version.Version=${VERSION} -X github.com/edgeai-platform/ai-edge/internal/version.Commit=${GIT_COMMIT} -X github.com/edgeai-platform/ai-edge/internal/version.BuildDate=${BUILD_DATE}" \
+      -o /bin/gateway-runtime ./cmd/gateway-runtime
 
 FROM alpine:3.20
 
