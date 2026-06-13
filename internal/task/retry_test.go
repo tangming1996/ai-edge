@@ -10,9 +10,9 @@ import (
 
 func TestRetryPolicy_CanRetry(t *testing.T) {
 	cases := []struct {
-		name  string
+		name   string
 		policy task.RetryPolicy
-		want  bool
+		want   bool
 	}{
 		{"max=3 retry=0 can", task.RetryPolicy{MaxRetries: 3, RetryCount: 0}, true},
 		{"max=3 retry=1 can", task.RetryPolicy{MaxRetries: 3, RetryCount: 1}, true},

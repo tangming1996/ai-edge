@@ -10,8 +10,8 @@ import (
 )
 
 type fakeExecutor struct {
-	calls int
-	lastType   string
+	calls       int
+	lastType    string
 	lastPayload []byte
 	returnBytes []byte
 	returnErr   error

@@ -120,7 +120,7 @@ func TestEffectiveVersion(t *testing.T) {
 			want:     "",
 		},
 		{
-			name:     "whitespace-only version falls through to fallback",
+			name: "whitespace-only version falls through to fallback",
 			// EffectiveVersion uses TrimSpace to decide emptiness, so a
 			// whitespace-only value behaves like an unset version.
 			ver:      "   ",

@@ -11,9 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/edgeai-platform/ai-edge/internal/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/edgeai-platform/ai-edge/internal/store"
 )
 
 // dsnToConfig parses a libpq-style DSN into a store.Config without
