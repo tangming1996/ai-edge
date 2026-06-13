@@ -65,10 +65,10 @@ jobs:
             ${{ runner.os }}-go-build-
             ${{ runner.os }}-
       - name: Run unit tests with coverage
-        # The V1 target is MIN_COVERAGE=40 / PKG_MIN_INTERNAL_PKI=80; CI uses
-        # the current measured baseline (1 / 80) so the gate is green today.
-        # Bump these in lockstep with raising the Makefile defaults.
-        run: make test-coverage MIN_COVERAGE=1 PKG_MIN_INTERNAL_PKI=80
+        # Coverage thresholds are now part of the merge gate. Bump in
+        # lockstep with the Makefile defaults; the make target itself
+        # reports the actual numbers.
+        run: make test-coverage MIN_COVERAGE=40 PKG_MIN_INTERNAL_PKI=80
       - name: Upload coverage artifacts
         if: always()
         uses: actions/upload-artifact@v4

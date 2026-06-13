@@ -57,11 +57,32 @@ The coverage thresholds are configurable:
 make test-coverage MIN_COVERAGE=50 PKG_MIN_INTERNAL_PKI=90
 ```
 
-Defaults: `MIN_COVERAGE=1` (total) and `PKG_MIN_INTERNAL_PKI=80`
-(`internal/pki` package average). The design proposes a V1 target of
-`MIN_COVERAGE=40`; the lower default reflects the repository's current
-state. Bump the default in `Makefile` and the CI workflow in lockstep as
-new unit tests are added.
+Defaults: `MIN_COVERAGE=40` (total internal coverage) and
+`PKG_MIN_INTERNAL_PKI=80` (`internal/pki` package average). The total
+is computed across all non-generated Go files under `internal/` —
+`api/gen/`, `cmd/`, and any other generated artefacts are excluded
+from both the test run and the percentage calculation, since coverage
+on generated code does not reflect engineering effort. The Makefile
+defines `COVERAGE_PKGS := ./internal/...`; override it on the command
+line to broaden or narrow the scope.
+
+### How to validate the new threshold locally
+
+```bash
+# Default thresholds (40 / 80).
+make test-coverage
+
+# Tighter ad-hoc check, e.g. before proposing a tighter default.
+make test-coverage MIN_COVERAGE=60 PKG_MIN_INTERNAL_PKI=85
+
+# Show the per-file breakdown (the make target already prints this).
+go tool cover -func=coverage.out
+```
+
+If a threshold is missed, the target exits non-zero with a clear
+"ERROR: … below threshold" message. The summary lists the actual
+`Total coverage` and `internal/pki coverage` percentages, so a PR can
+include before/after numbers in the description.
 
 ## Running integration tests locally
 

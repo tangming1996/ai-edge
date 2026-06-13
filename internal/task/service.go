@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -190,7 +191,7 @@ func (svc *Service) CancelTask(
 
 		currentProto := statusToProto[row.Status]
 		if IsTerminal(currentProto) {
-			return fmt.Errorf("task is already in terminal state: %s", row.Status)
+			return fmt.Errorf("%w: task is already in terminal state: %s", store.ErrPrecondition, row.Status)
 		}
 		if !ValidateTransition(currentProto, pb.TaskStatus_TASK_STATUS_CANCELLED) {
 			return &ErrInvalidTransition{From: currentProto, To: pb.TaskStatus_TASK_STATUS_CANCELLED}
@@ -243,15 +244,16 @@ func rowToProto(r *TaskRow) *pb.Task {
 }
 
 func errToStatus(err error) error {
-	switch err {
-	case store.ErrNotFound:
+	switch {
+	case errors.Is(err, store.ErrNotFound):
 		return status.Error(codes.NotFound, "task not found")
-	case store.ErrPrecondition:
+	case errors.Is(err, store.ErrPrecondition):
 		return status.Error(codes.FailedPrecondition, err.Error())
-	case store.ErrConflict, store.ErrAlreadyExists:
+	case errors.Is(err, store.ErrConflict), errors.Is(err, store.ErrAlreadyExists):
 		return status.Error(codes.AlreadyExists, err.Error())
 	}
-	if _, ok := err.(*ErrInvalidTransition); ok {
+	var inv *ErrInvalidTransition
+	if errors.As(err, &inv) {
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 	return status.Errorf(codes.Internal, "%v", err)
