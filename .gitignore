@@ -11,6 +11,7 @@ var/
 # Test
 *.test
 *.out
+coverage.html
 coverage.txt
 
 # Go

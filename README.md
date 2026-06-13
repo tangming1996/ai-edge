@@ -192,6 +192,8 @@ go run ./cmd/edge-agent --config ./edge-agent.json
 go test ./...
 ```
 
+测试规范与分层见 [docs/testing.md](./docs/testing.md)。
+
 运行 smoke test：
 
 ```bash
