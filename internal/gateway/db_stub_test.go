@@ -21,10 +21,9 @@ import (
 // Until then this stub provides enough surface to exercise the cache
 // without a real Postgres connection.
 type memDB struct {
-	mu        sync.Mutex
-	rows      map[string]memIdentityRow
-	failNext  bool
-	pingsLeft int // number of times Ping must succeed before failure; -1 = always ok
+	mu       sync.Mutex
+	rows     map[string]memIdentityRow
+	failNext bool
 }
 
 type memIdentityRow struct {
@@ -45,12 +44,6 @@ func (m *memDB) setRow(fingerprint, nodeID, gatewayID, status string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.rows[fingerprint] = memIdentityRow{nodeID, gatewayID, status}
-}
-
-func (m *memDB) clear() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.rows = map[string]memIdentityRow{}
 }
 
 func (m *memDB) setFailOnce() {

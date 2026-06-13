@@ -71,9 +71,6 @@ func TestExecutorMux_UnknownTaskType(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unknown task type")
 	}
-	if !errors.Is(err, err) {
-		// Just ensure the error is non-nil and is not the typed fake error.
-	}
 	if err.Error() == "" {
 		t.Fatal("empty error message")
 	}

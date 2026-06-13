@@ -205,15 +205,8 @@ func TestTimeoutExceeded(t *testing.T) {
 	}
 }
 
-// asErr is a tiny adapter so the table above can mix error types and
-// pre-built sentinels without import cycles.
+// errString is a small error type so the table above can mix error
+// types and pre-built sentinels without import cycles.
 type errString string
 
 func (e errString) Error() string { return string(e) }
-
-func asErr(e error) errString {
-	if e == nil {
-		return ""
-	}
-	return errString(e.Error())
-}
