@@ -69,7 +69,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  {{- include "ai-edge.pvc" (dict "root" . "storageClass" .Values.minio.persistence.storageClass "size" .Values.minio.persistence.size) | nindent 2 }}
+  {{- include "ai-edge.pvc" (dict "root" . "component" "minio" "size" .Values.minio.persistence.size) | nindent 2 }}
 {{- end }}
 ---
 apiVersion: v1

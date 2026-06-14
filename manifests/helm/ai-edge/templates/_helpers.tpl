@@ -88,10 +88,36 @@ MinIO host resolution.
 {{- end }}
 
 {{/*
+Resolve the storageClass to use for a component's PVC.
+
+Priority (highest first):
+  1. <component>.persistence.storageClass  (component-specific override)
+  2. global.storageClass                   (cluster-wide default)
+  3. ""                                     (let the cluster pick its default SC)
+
+Usage:
+  include "ai-edge.storageClass" (dict "root" . "component" "postgresql")
+  include "ai-edge.storageClass" (dict "root" . "storageClass" .Values.postgresql.persistence.storageClass)
+*/}}
+{{- define "ai-edge.storageClass" -}}
+{{- $componentSc := "" -}}
+{{- if .component -}}
+  {{- $componentSc = index .root.Values .component "persistence" "storageClass" | default "" -}}
+{{- else -}}
+  {{- $componentSc = .storageClass | default "" -}}
+{{- end -}}
+{{- if $componentSc -}}
+{{- $componentSc -}}
+{{- else if .root.Values.global.storageClass -}}
+{{- .root.Values.global.storageClass -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Persistence volume claim spec helper.
 */}}
 {{- define "ai-edge.pvc" -}}
-{{- $storageClass := .storageClass | default .root.Values.global.storageClass | default "" -}}
+{{- $storageClass := include "ai-edge.storageClass" (dict "root" .root "component" .component "storageClass" .storageClass) -}}
 {{- if $storageClass }}
 storageClassName: {{ $storageClass }}
 {{- end }}

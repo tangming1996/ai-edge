@@ -245,3 +245,11 @@ helm upgrade --install ai-edge ./helm/ai-edge \
   --dry-run \
   --set postgresql.enabled=true
 ```
+
+## 清理 helm 部署
+```bash
+helm uninstall ai-edge -n edgeai-system
+kubectl delete pvc -n edgeai-system -l app.kubernetes.io/instance=ai-edge
+kubectl delete secret -n edgeai-system -l app.kubernetes.io/instance=ai-edge
+kubectl delete namespace edgeai-system   # 可选,删 ns 会带走里面所有东西
+```

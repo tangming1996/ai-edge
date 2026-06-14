@@ -64,7 +64,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  {{- include "ai-edge.pvc" (dict "root" . "storageClass" .Values.prometheus.persistence.storageClass "size" .Values.prometheus.persistence.size) | nindent 2 }}
+  {{- include "ai-edge.pvc" (dict "root" . "component" "prometheus" "size" .Values.prometheus.persistence.size) | nindent 2 }}
 ---
 {{- end }}
 apiVersion: v1

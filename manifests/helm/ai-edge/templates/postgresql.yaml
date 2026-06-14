@@ -80,7 +80,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  {{- include "ai-edge.pvc" (dict "root" . "storageClass" .Values.postgresql.persistence.storageClass "size" .Values.postgresql.persistence.size) | nindent 2 }}
+  {{- include "ai-edge.pvc" (dict "root" . "component" "postgresql" "size" .Values.postgresql.persistence.size) | nindent 2 }}
 ---
 {{- end }}
 apiVersion: v1
