@@ -25,6 +25,13 @@ const (
 	updateGatewaySQL  = "UPDATE gateways SET labels"
 	deleteGatewaySQL  = "UPDATE gateways SET status = 'Deleted'"
 	countGatewaysSQL  = "SELECT COUNT(*) FROM gateways"
+	// listGatewaysSQL identifies the row-returning List query. The
+	// substring must NOT be shared with countGatewaysSQL because the
+	// mem driver dispatches by substring with a randomized map
+	// iteration order: a shared fragment would let the count Scan
+	// pick up the 8-column data row and fail with "expected 8
+	// destination arguments in Scan, not 1".
+	listGatewaysSQL = "ORDER BY created_at DESC"
 )
 
 func newTestGatewayService(t *testing.T) *GatewayManagementService {
@@ -291,7 +298,7 @@ func TestGatewayManagementService_ListGateways_WithRegion(t *testing.T) {
 	// count returns 1; data returns one row matching the region.
 	store.SetRowForQuery(countGatewaysSQL, []driver.Value{int64(1)})
 	now := time.Date(2026, 6, 13, 12, 0, 0, 0, time.UTC)
-	store.SetRowForQuery("AND region = $1", []driver.Value{
+	store.SetRowForQuery(listGatewaysSQL, []driver.Value{
 		"id-1", "gw-1", "us-east-1", []byte(`{}`), "Active", "https://gw-1:7443", now, now,
 	})
 	resp, err := svc.ListGateways(context.Background(), &pb.ListGatewaysRequest{
