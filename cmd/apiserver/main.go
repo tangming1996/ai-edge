@@ -15,6 +15,8 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 
 	pb "github.com/edgeai-platform/ai-edge/api/gen/go/edge/ai/api/v1"
@@ -64,6 +66,16 @@ func main() {
 	// --- gRPC server ---
 	grpcServer := grpc.NewServer()
 	registerServices(grpcServer, db, signer)
+	// Register the standard gRPC health service so kubelet's gRPC
+	// liveness/readiness probes (manifests/helm/ai-edge/templates/
+	// apiserver.yaml: grpc: { port: <grpcPort> }) can call
+	// grpc.health.v1.Health.Check and get SERVING back. Without
+	// this, the probe fails with "unknown service grpc.health.v1.
+	// Health" because the server only has business services
+	// registered.
+	healthServer := health.NewServer()
+	healthpb.RegisterHealthServer(grpcServer, healthServer)
+	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	reflection.Register(grpcServer)
 
 	grpcLis, err := net.Listen("tcp", grpcAddr)
