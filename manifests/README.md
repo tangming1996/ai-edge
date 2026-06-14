@@ -163,14 +163,18 @@ Chart 仍会在 release 命名空间里创建 MinIO、TLS 等其他 Secret；如
 最接近「严格生产」的形态：所有证书与密码都由贵司的 PKI / Secret 管理平台签发，Chart 零 Secret 生成：
 
 ```bash
-# 1) 准备 apiserver CA（必须包含 tls.crt / tls.key / ca.crt）
+# 1) 准备 apiserver CA。apiserver 进程直接读取 Secret 中
+#    名为 ca.crt / ca.key 的键(CA_CERT_PATH/CA_KEY_PATH)。
+#    同一份 PEM 也以 tls.crt / tls.key 别名写入,便于把
+#    Secret 当作 kubernetes.io/tls 给其他组件消费。
 kubectl create secret generic corp-apiserver-ca \
   --namespace edgeai-system \
   --from-file=tls.crt=./pki/apiserver-ca.crt \
   --from-file=tls.key=./pki/apiserver-ca.key \
-  --from-file=ca.crt=./pki/apiserver-ca.crt
+  --from-file=ca.crt=./pki/apiserver-ca.crt \
+  --from-file=ca.key=./pki/apiserver-ca.key
 
-# 2) 准备 gateway mTLS 证书（包含 tls.crt / tls.key，可选 ca.crt）
+# 2) 准备 gateway mTLS 证书(包含 tls.crt / tls.key,可选 ca.crt)
 kubectl create secret generic corp-gateway-tls \
   --namespace edgeai-system \
   --from-file=tls.crt=./pki/gateway.crt \

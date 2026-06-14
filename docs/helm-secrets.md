@@ -34,10 +34,9 @@ how to point it at secrets you already own.
 
 | Secret (default name)        | Consumed by                          | Auto-generated when                                                | Keys                                        |
 |------------------------------|--------------------------------------|--------------------------------------------------------------------|---------------------------------------------|
-| `edgeai-db`                  | apiserver, controller, gateway       | `db.createSecret=true` **or** `postgresql.enabled=true`            | `password`, `username`, `database`          |
-| `<release>-postgresql-secret`| bundled Postgres pod                 | `postgresql.enabled=true` (and no `existingSecret`)                | `password`                                  |
+| `edgeai-db`                  | apiserver, controller, gateway, **bundled Postgres** | `db.createSecret=true` **or** `postgresql.enabled=true`            | `password`, `username`, `database`          |
 | `<release>-minio-secret`     | bundled MinIO pod                    | `minio.enabled=true` (and no `existingSecret`)                     | `rootuser`, `rootpassword`                  |
-| `<fullname>-apiserver-ca`    | apiserver                            | `apiserver.ca.generate=true`                                       | `tls.crt`, `tls.key`, `ca.crt`              |
+| `<fullname>-apiserver-ca`    | apiserver                            | `apiserver.ca.generate=true`                                       | `ca.crt`, `ca.key`, `tls.crt`, `tls.key`    |
 | `<fullname>-gateway-tls`     | gateway-runtime                      | `gatewayRuntime.tls.generate=true`                                 | `tls.crt`, `tls.key`, (`ca.crt` if chained) |
 | `<fullname>-gateway-ca`      | gateway-runtime                      | `gatewayRuntime.ca.generate=true` (and no apiserver CA generated)  | `ca.crt`                                    |
 
@@ -291,6 +290,7 @@ reading `.Values.db.existingSecret` directly. This guarantees:
 | mTLS handshake fails between gateway and edge-agents                 | The CA in the apiserver / gateway Secrets does not match. When bringing your own CA, both `apiserver.ca` and `gatewayRuntime.tls` must be issued (or chained) by the same root. |
 | DB connection refused after install                                  | The bundled Postgres takes 20–30s to become ready. `apiserver` / `controller` / `gateway` retry on backoff; check `kubectl get pods -n edgeai-system`. |
 | `apiserver` / `controller` / `gateway` log `password authentication failed for user "postgres"` | Two Secrets (`edgeai-db` and `<release>-postgresql-secret`) drifted; restore a single source of truth as described in [Upgrading from chart versions that auto-generated `<release>-postgresql-secret`](#operational-notes). |
+| `apiserver` logs `init signer: open /etc/edgeai/pki/ca.key: no such file or directory` and exits | The mounted CA Secret is missing a `ca.key` key. With `apiserver.ca.generate=true` the chart writes both `ca.crt`/`ca.key` (consumed by the apiserver) and `tls.crt`/`tls.key` (consumed as `kubernetes.io/tls`); if you bring your own Secret, ensure it contains `ca.crt` **and** `ca.key` at the root — the apiserver reads `CA_CERT_PATH=/etc/edgeai/pki/ca.crt` and `CA_KEY_PATH=/etc/edgeai/pki/ca.key` from the mounted volume. |
 
 For deeper background on the secrets that flow through the platform,
 see [`docs/design/02-node-onboarding-security.md`](../design/02-node-onboarding-security.md)
