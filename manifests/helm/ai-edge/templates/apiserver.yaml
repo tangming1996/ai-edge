@@ -47,7 +47,7 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.db.existingSecret | default .Values.db.secretName }}
+                  name: {{ include "ai-edge.dbSecretName" . }}
                   key: password
             - name: DB_NAME
               value: {{ .Values.db.database }}
@@ -57,14 +57,14 @@ spec:
               value: {{ .Values.apiserver.env.GRPC_ADDR }}
             - name: HTTP_ADDR
               value: {{ .Values.apiserver.env.HTTP_ADDR }}
-            {{- if .Values.apiserver.caSecretName }}
+            {{- if include "ai-edge.apiserverCaSecretName" . }}
             - name: CA_CERT_PATH
               value: /etc/edgeai/pki/ca.crt
             - name: CA_KEY_PATH
               value: /etc/edgeai/pki/ca.key
             {{- end }}
           volumeMounts:
-            {{- if .Values.apiserver.caSecretName }}
+            {{- if include "ai-edge.apiserverCaSecretName" . }}
             - name: ca-keys
               mountPath: /etc/edgeai/pki
               readOnly: true
@@ -82,10 +82,11 @@ spec:
           resources:
             {{- toYaml .Values.apiserver.resources | nindent 10 }}
       volumes:
-        {{- if .Values.apiserver.caSecretName }}
+        {{- $caSecretName := include "ai-edge.apiserverCaSecretName" . -}}
+        {{- if $caSecretName }}
         - name: ca-keys
           secret:
-            secretName: {{ .Values.apiserver.caSecretName }}
+            secretName: {{ $caSecretName }}
         {{- end }}
 ---
 apiVersion: v1

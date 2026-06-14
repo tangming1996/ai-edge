@@ -10,43 +10,100 @@ To learn more about the release, try:
 == Component Status ==
 
 {{- if .Values.apiserver.enabled }}
-  [✔] apiserver      : {{ include "ai-edge.fullname" . }}-apiserver
+  [+] apiserver      : {{ include "ai-edge.fullname" . }}-apiserver
 {{- else }}
   [x] apiserver      : disabled
 {{- end }}
 
 {{- if .Values.controller.enabled }}
-  [✔] controller     : {{ include "ai-edge.fullname" . }}-controller
+  [+] controller     : {{ include "ai-edge.fullname" . }}-controller
 {{- else }}
   [x] controller     : disabled
 {{- end }}
 
 {{- if .Values.gatewayRuntime.enabled }}
-  [✔] gateway-runtime: {{ include "ai-edge.fullname" . }}-gateway-runtime (DaemonSet)
+  [+] gateway-runtime: {{ include "ai-edge.fullname" . }}-gateway-runtime (DaemonSet)
 {{- else }}
   [x] gateway-runtime: disabled
 {{- end }}
 
 {{- if .Values.postgresql.enabled }}
-  [✔] postgresql     : {{ .Release.Name }}-postgresql
+  [+] postgresql     : {{ .Release.Name }}-postgresql
 {{- else if .Values.db.host }}
-  [✔] postgresql     : external ({{ .Values.db.host }})
+  [+] postgresql     : external ({{ .Values.db.host }})
 {{- else }}
   [x] postgresql     : not configured (set db.host)
 {{- end }}
 
 {{- if .Values.minio.enabled }}
-  [✔] minio          : {{ .Release.Name }}-minio
+  [+] minio          : {{ .Release.Name }}-minio
 {{- else if .Values.minio.externalHost }}
-  [✔] minio          : external ({{ .Values.minio.externalHost }})
+  [+] minio          : external ({{ .Values.minio.externalHost }})
 {{- else }}
   [x] minio          : not configured (set minio.externalHost)
 {{- end }}
 
 {{- if .Values.prometheus.enabled }}
-  [✔] prometheus     : {{ .Release.Name }}-prometheus
+  [+] prometheus     : {{ .Release.Name }}-prometheus
 {{- else }}
   [x] prometheus     : disabled
+{{- end }}
+
+== Secrets ==
+
+{{- if .Values.db.existingSecret }}
+  [use] DB credentials   : existingSecret={{ .Values.db.existingSecret }} (not managed by this chart)
+{{- else if eq (include "ai-edge.dbCreateSecret" .) "true" }}
+  [auto] DB credentials  : Secret/{{ include "ai-edge.dbSecretName" . }}
+{{- else }}
+  [-]   DB credentials   : not generated (set db.existingSecret or postgresql.enabled)
+{{- end }}
+{{- if .Values.postgresql.enabled }}
+  {{- if .Values.postgresql.auth.existingSecret }}
+  [use] PostgreSQL       : existingSecret={{ .Values.postgresql.auth.existingSecret }}
+  {{- else }}
+  [auto] PostgreSQL pwd  : Secret/{{ include "ai-edge.postgresqlSecretName" . }} (key: password)
+  {{- end }}
+{{- end }}
+{{- if .Values.minio.enabled }}
+  {{- if .Values.minio.auth.existingSecret }}
+  [use] MinIO            : existingSecret={{ .Values.minio.auth.existingSecret }}
+  {{- else }}
+  [auto] MinIO pwd       : Secret/{{ include "ai-edge.minioSecretName" . }} (key: rootpassword)
+  {{- end }}
+{{- end }}
+{{- if .Values.apiserver.ca.generate }}
+  [auto] apiserver CA    : Secret/{{ include "ai-edge.apiserverCaSecretName" . }} (self-signed, 10y)
+{{- else if .Values.apiserver.ca.existingSecret }}
+  [use] apiserver CA     : existingSecret={{ .Values.apiserver.ca.existingSecret }}
+{{- end }}
+{{- if .Values.gatewayRuntime.tls.generate }}
+  [auto] gateway mTLS    : Secret/{{ include "ai-edge.gatewayTlsSecretName" . }}
+{{- else if .Values.gatewayRuntime.tls.existingSecret }}
+  [use] gateway mTLS     : existingSecret={{ .Values.gatewayRuntime.tls.existingSecret }}
+{{- end }}
+{{- if .Values.gatewayRuntime.ca.generate }}
+  [auto] gateway CA      : Secret/{{ include "ai-edge.gatewayCaSecretName" . }}
+{{- else if .Values.gatewayRuntime.ca.existingSecret }}
+  [use] gateway CA       : existingSecret={{ .Values.gatewayRuntime.ca.existingSecret }}
+{{- end }}
+
+Retrieve any auto-generated password with:
+
+  $ kubectl get secret -n {{ .Release.Namespace }} <secret-name> -o jsonpath='{.data.<key>}' | base64 -d
+
+Example — fetch the bundled DB password:
+
+  $ DB_PWD=$(kubectl get secret -n {{ .Release.Namespace }} {{ include "ai-edge.dbSecretName" . }} \
+      -o jsonpath='{.data.password}' | base64 -d)
+
+{{- if and (or .Values.apiserver.ca.generate .Values.apiserver.ca.existingSecret) (or .Values.gatewayRuntime.tls.generate .Values.gatewayRuntime.tls.existingSecret) }}
+
+Note: When both the apiserver CA and gateway mTLS are auto-generated, the
+gateway server cert is signed by the apiserver CA, so the chart embeds
+the same `ca.crt` in the gateway TLS secret. You can verify with:
+
+  $ kubectl get secret -n {{ .Release.Namespace }} {{ include "ai-edge.gatewayTlsSecretName" . }} -o yaml
 {{- end }}
 
 == Next Steps ==
@@ -70,5 +127,15 @@ To learn more about the release, try:
 
 == Required Pre-requisites ==
 
-- PostgreSQL database (set `db.host` if external, or enable `postgresql.enabled=true`)
-- TLS certificates for apiserver and gateway-runtime (mounted via secrets referenced in `apiserver.caSecretName` and `gatewayRuntime.gatewayTlsSecretName`)
+- A database reachable from the cluster. Either:
+    * enable `postgresql.enabled=true` (the chart ships Postgres and auto-generates a password), or
+    * set `db.host` + `db.existingSecret` for an external DB.
+- A CA the apiserver uses to sign bootstrap / leaf certs. Either:
+    * set `apiserver.ca.generate=true` (self-signed, 10-year validity), or
+    * set `apiserver.ca.existingSecret=...` for your own CA bundle.
+- An mTLS server cert the gateway presents to edge-agents. Either:
+    * set `gatewayRuntime.tls.generate=true` (signed by the apiserver CA when
+      both are auto-generated, otherwise self-signed), or
+    * set `gatewayRuntime.tls.existingSecret=...` to bring your own.
+
+For full guidance see docs/helm-secrets.md.

@@ -79,13 +79,13 @@ spec:
               value: {{ .Values.gatewayRuntime.env.CONNECTIVITY_CHECK_INTERVAL }}
             - name: CONNECTIVITY_TIMEOUT
               value: {{ .Values.gatewayRuntime.env.CONNECTIVITY_TIMEOUT }}
-            {{- if .Values.gatewayRuntime.gatewayTlsSecretName }}
+            {{- if include "ai-edge.gatewayTlsSecretName" . }}
             - name: GATEWAY_TLS_CERT_PATH
               value: /etc/edgeai/tls/tls.crt
             - name: GATEWAY_TLS_KEY_PATH
               value: /etc/edgeai/tls/tls.key
             {{- end }}
-            {{- if .Values.gatewayRuntime.gatewayCaSecretName }}
+            {{- if include "ai-edge.gatewayCaSecretName" . }}
             - name: GATEWAY_CA_CERT_PATH
               value: /etc/edgeai/ca/ca.crt
             {{- end }}
@@ -100,17 +100,19 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.db.existingSecret | default .Values.db.secretName }}
+                  name: {{ include "ai-edge.dbSecretName" . }}
                   key: password
             - name: DB_NAME
               value: {{ .Values.db.database }}
           volumeMounts:
-            {{- if .Values.gatewayRuntime.gatewayTlsSecretName }}
+            {{- $tlsSecretName := include "ai-edge.gatewayTlsSecretName" . -}}
+            {{- $caSecretName := include "ai-edge.gatewayCaSecretName" . -}}
+            {{- if $tlsSecretName }}
             - name: tls
               mountPath: /etc/edgeai/tls
               readOnly: true
             {{- end }}
-            {{- if .Values.gatewayRuntime.gatewayCaSecretName }}
+            {{- if $caSecretName }}
             - name: ca-cert
               mountPath: /etc/edgeai/ca
               readOnly: true
@@ -130,15 +132,15 @@ spec:
           resources:
             {{- toYaml .Values.gatewayRuntime.resources | nindent 10 }}
       volumes:
-        {{- if .Values.gatewayRuntime.gatewayTlsSecretName }}
+        {{- if include "ai-edge.gatewayTlsSecretName" . }}
         - name: tls
           secret:
-            secretName: {{ .Values.gatewayRuntime.gatewayTlsSecretName }}
+            secretName: {{ include "ai-edge.gatewayTlsSecretName" . }}
         {{- end }}
-        {{- if .Values.gatewayRuntime.gatewayCaSecretName }}
+        {{- if include "ai-edge.gatewayCaSecretName" . }}
         - name: ca-cert
           secret:
-            secretName: {{ .Values.gatewayRuntime.gatewayCaSecretName }}
+            secretName: {{ include "ai-edge.gatewayCaSecretName" . }}
         {{- end }}
         - name: gateway-cache
           hostPath:
