@@ -44,7 +44,7 @@ func newMemOnboarding(t *testing.T) (*onboarding.TokenStore, *onboarding.Identit
 	return tokens, onboarding.NewIdentityGRPC(db, bs)
 }
 
-func now() time.Time { return time.Date(2026, 6, 13, 12, 0, 0, 0, time.UTC) }
+func now() time.Time { return time.Now() }
 
 // --- TokenStore tests ---
 
