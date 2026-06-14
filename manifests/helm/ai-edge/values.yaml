@@ -133,12 +133,13 @@ postgresql:
   auth:
     database: edgeai
     username: postgres
-    # Leave empty to let the chart generate a random password and store
-    # it in `<release>-postgresql-secret`. Set to a literal value for an
-    # in-cluster dev Postgres. For production, prefer `existingSecret`.
-    password: ""
+    # 内部 PostgreSQL 的密码统一来自 `edgeai-db` Secret
+    # (db.secretName)的 `password` 字段,与应用组件保持一致。
+    # 因此本节不再暴露 `password` 字段——若需要固定开发密码,
+    # 请使用 `db.password` 或在外部自己维护 `db.existingSecret`。
     # Bring-your-own secret with the `password` key. When set, overrides
-    # the auto-generated secret and `password` is ignored.
+    # the auto-generated `edgeai-db` Secret and the bundled PostgreSQL
+    # is not deployed.
     existingSecret: ""
   persistence:
     enabled: true

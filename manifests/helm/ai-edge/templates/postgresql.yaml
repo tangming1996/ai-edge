@@ -38,9 +38,13 @@ spec:
             - name: POSTGRES_USER
               value: {{ .Values.postgresql.auth.username }}
             - name: POSTGRES_PASSWORD
+              # 密码来源优先级:
+              #   1) postgresql.auth.existingSecret(若设置,使用运维自建 Secret)
+              #   2) 默认与 apiserver / controller / gateway 共享 `edgeai-db`,
+              #      避免 chart 自管 PG 模式下密码漂移。
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-edge.postgresqlSecretName" . }}
+                  name: {{ include "ai-edge.postgresPasswordSecretName" . }}
                   key: password
             - name: POSTGRES_DB
               value: {{ .Values.postgresql.auth.database }}

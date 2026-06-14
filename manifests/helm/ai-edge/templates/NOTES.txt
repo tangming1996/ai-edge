@@ -55,6 +55,9 @@ To learn more about the release, try:
   [use] DB credentials   : existingSecret={{ .Values.db.existingSecret }} (not managed by this chart)
 {{- else if eq (include "ai-edge.dbCreateSecret" .) "true" }}
   [auto] DB credentials  : Secret/{{ include "ai-edge.dbSecretName" . }}
+  {{- if .Values.postgresql.enabled }}
+  (also consumed by the bundled PostgreSQL pod via POSTGRES_PASSWORD)
+  {{- end }}
 {{- else }}
   [-]   DB credentials   : not generated (set db.existingSecret or postgresql.enabled)
 {{- end }}
@@ -62,7 +65,7 @@ To learn more about the release, try:
   {{- if .Values.postgresql.auth.existingSecret }}
   [use] PostgreSQL       : existingSecret={{ .Values.postgresql.auth.existingSecret }}
   {{- else }}
-  [auto] PostgreSQL pwd  : Secret/{{ include "ai-edge.postgresqlSecretName" . }} (key: password)
+  [auto] PostgreSQL      : bundled, password sourced from Secret/{{ include "ai-edge.dbSecretName" . }}
   {{- end }}
 {{- end }}
 {{- if .Values.minio.enabled }}

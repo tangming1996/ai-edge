@@ -19,6 +19,17 @@ spec:
         {{- include "ai-edge.labels" . | nindent 8 }}
         app.kubernetes.io/component: prometheus
     spec:
+      # `prom/prometheus` 镜像以 UID 65534(nobody)运行。PVC/emptyDir 挂载
+      # 后的目录属主默认为 root,需通过 fsGroup 让 kubelet chown 到 65534,
+      # 否则 Prometheus 启动时无法创建 /prometheus/queries.active 而 panic。
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: prometheus
           image: "{{ .Values.prometheus.image.repository }}:{{ .Values.prometheus.image.tag }}"
@@ -34,6 +45,12 @@ spec:
               protocol: TCP
           resources:
             {{- toYaml .Values.prometheus.resources | nindent 10 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           volumeMounts:
             - name: config
               mountPath: /etc/prometheus

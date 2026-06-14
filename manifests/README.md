@@ -102,8 +102,10 @@ helm install ai-edge ./helm/ai-edge \
   --create-namespace \
   --set postgresql.enabled=true \
   --set minio.enabled=true \
+  --set prometheus.enabled=true \
   --set apiserver.ca.generate=true \
-  --set gatewayRuntime.tls.generate=true
+  --set gatewayRuntime.tls.generate=true \
+  --set global.storageClass=default
 ```
 
 安装完成后 `helm install` 的输出会打印一个 `== Secrets ==` 块，列出本次 release 自动创建的所有 Secret 名称。**请立即把里面的密码保存到安全位置**：
@@ -112,13 +114,14 @@ helm install ai-edge ./helm/ai-edge \
 # 1) 查看 release 中所有 Secret
 kubectl get secrets -n edgeai-system -l app.kubernetes.io/instance=ai-edge
 
-# 2) 取一个自动生成的密码（示例：Postgres）
-kubectl get secret -n edgeai-system ai-edge-postgresql-secret \
+# 2) 取一个自动生成的密码（控制面 / DB）
+kubectl get secret -n edgeai-system edgeai-db \
   -o jsonpath='{.data.password}' | base64 -d
 ```
 
 > 自动生成的密码使用 `randAlphaNum 24`，每次 `helm install` 都会重新生成。
 > `helm upgrade` 默认不会更新已有 Secret 的 data，因此升级不会轮换密码；如需轮换请先删除 Secret 再 `helm upgrade`。
+> 启用内置 PostgreSQL 时，Postgres Pod 与 apiserver/controller/gateway 共享同一份 `edgeai-db` 凭证（key: `password`），不再生成单独的 `*-postgresql-secret`。
 
 ## 4. 自定义 Secret 部署（生产环境推荐）
 
@@ -217,8 +220,7 @@ helm install ai-edge ./helm/ai-edge \
 
 | Secret | 自动生成条件 | 外部覆盖 key | 默认 Secret 名 |
 |--------|-------------|-------------|---------------|
-| 控制面 DB 凭证 | `postgresql.enabled=true` 或 `db.createSecret=true` | `db.existingSecret` | `edgeai-db` |
-| 内置 Postgres 密码 | `postgresql.enabled=true` 且无 `existingSecret` | `postgresql.auth.existingSecret` | `<release>-postgresql-secret` |
+| 控制面 DB 凭证（同时供内置 Postgres 使用） | `postgresql.enabled=true` 或 `db.createSecret=true` | `db.existingSecret` | `edgeai-db` |
 | 内置 MinIO 凭证 | `minio.enabled=true` 且无 `existingSecret` | `minio.auth.existingSecret` | `<release>-minio-secret` |
 | apiserver CA | `apiserver.ca.generate=true` | `apiserver.ca.existingSecret` | `<release>-ai-edge-apiserver-ca` |
 | gateway mTLS 证书 | `gatewayRuntime.tls.generate=true` | `gatewayRuntime.tls.existingSecret` | `<release>-ai-edge-gateway-tls` |
@@ -331,7 +333,7 @@ kubectl exec -n edgeai-system deploy/ai-edge-apiserver -- \
 | `postgresql.enabled` | 使用 Chart 内置 PostgreSQL | `false` |
 | `postgresql.persistence.enabled` | 启用持久化 | `true` |
 | `postgresql.persistence.size` | PVC 大小 | `10Gi` |
-| `postgresql.auth.existingSecret` | 使用已有的 Postgres 凭证 Secret | `""` |
+| `postgresql.auth.existingSecret` | 内置 PG 改读这个 Secret 中的 `password` 字段（其它场景保持默认 `edgeai-db`） | `""` |
 | `minio.enabled` | 使用 Chart 内置 MinIO | `false` |
 | `minio.externalHost` | 外部 MinIO 地址 | `""` |
 | `minio.defaultBuckets` | 默认创建的 bucket | `edgeai-models` |
@@ -353,6 +355,8 @@ kubectl exec -n edgeai-system deploy/ai-edge-apiserver -- \
 | `db.sslmode` | Postgres SSL 模式 | `disable` |
 
 > 优先级：设置了 `db.existingSecret` → 使用你的 Secret；否则若 `postgresql.enabled=true` → 自动创建并发布 `db.secretName`；否则不创建任何 DB Secret，部署会因 `DB_HOST` 为空而 `Pending`/`Running` 但连不上库。
+>
+> 启用内置 PostgreSQL 时，Postgres Pod 直接从 `db.secretName`（默认 `edgeai-db`）读取 `POSTGRES_PASSWORD`——它**不**再独立生成 `*-postgresql-secret`，从根上避免 Postgres 与应用组件的密码漂移。如果是从早于本次重构的版本升级，旧 release 中的 `*-postgresql-secret` 仍是孤儿 Secret（chart 不会再渲染它），需要 `helm uninstall` 后重新 `helm install` 才能彻底清理（或手动 `kubectl delete secret`）。
 
 ## 8. Helm 校验 / 排错
 
@@ -384,9 +388,5 @@ helm install ai-edge ./helm/ai-edge \
 
 ```bash
 helm uninstall ai-edge -n edgeai-system
-kubectl delete pvc    -n edgeai-system -l app.kubernetes.io/instance=ai-edge
-kubectl delete secret -n edgeai-system -l app.kubernetes.io/instance=ai-edge
-kubectl delete namespace edgeai-system   # 可选：删 ns 会带走里面所有对象
-```
 
-> Helm 默认**不会**在 `uninstall` 时删除 Secret（避免误删数据卷密码），所以上面单独清一次 Secret。
+```

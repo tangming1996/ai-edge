@@ -97,8 +97,8 @@ kubectl get secret -n <namespace> <secret-name> -o jsonpath='{.data.<key>}' | ba
 Examples:
 
 ```sh
-# Bundled Postgres password
-kubectl get secret -n edgeai-system test-postgresql-secret \
+# Bundled Postgres password — same Secret as the control plane (apiserver / controller / gateway)
+kubectl get secret -n edgeai-system edgeai-db \
     -o jsonpath='{.data.password}' | base64 -d
 
 # Bundled MinIO root password
@@ -239,8 +239,8 @@ reading `.Values.db.existingSecret` directly. This guarantees:
 
 | Helper                       | Resolves to                                                       |
 |------------------------------|-------------------------------------------------------------------|
-| `ai-edge.dbSecretName`       | DB credentials consumed by apiserver / controller / gateway      |
-| `ai-edge.postgresqlSecretName` | Bundled Postgres password                                       |
+| `ai-edge.dbSecretName`       | DB credentials consumed by apiserver / controller / gateway / bundled Postgres |
+| `ai-edge.postgresPasswordSecretName` | Source of `POSTGRES_PASSWORD` for the bundled Postgres pod (`postgresql.auth.existingSecret` → falls back to `dbSecretName`) |
 | `ai-edge.minioSecretName`    | Bundled MinIO root credentials                                    |
 | `ai-edge.apiserverCaSecretName` | CA used by the apiserver to sign leaf certs                    |
 | `ai-edge.gatewayTlsSecretName` | mTLS server cert presented by gateway-runtime                  |
@@ -251,11 +251,28 @@ reading `.Values.db.existingSecret` directly. This guarantees:
 
 - **Rotation.** To rotate a chart-generated password, delete the
   Secret and run `helm upgrade` — `randAlphaNum` will produce a new
-  value and the Secret will be replaced.
+  value and the Secret will be replaced. There is a single source of
+  truth (`edgeai-db`); rotating it propagates to the bundled
+  PostgreSQL pod automatically.
 - **Backup.** The chart never deletes Secrets on `helm uninstall`
   (Helm's default behaviour) so uninstalling and reinstalling keeps
   the credentials stable. Use `helm uninstall ... --keep-history` or
   delete the Secrets manually if you want a clean slate.
+- **Upgrading from chart versions that auto-generated
+  `<release>-postgresql-secret`.** The bundled PostgreSQL used to read
+  its password from a dedicated Secret that was randomly generated
+  independently of `edgeai-db`, which made the three control-plane
+  components unable to log in to the database. After upgrading to the
+  current chart, the Postgres pod now reads `edgeai-db.password`. The
+  old `<release>-postgresql-secret` becomes an orphan — the chart no
+  longer renders it but Kubernetes will not garbage-collect it. Delete
+  the orphan manually (`kubectl delete secret
+  <release>-postgresql-secret -n <namespace>`) or run `helm uninstall
+  ... --keep-history` first. The bundled PostgreSQL PVC (which holds
+  the database files) is **not** affected by this change because the
+  password it is initialised with lives in PG's own catalog, not in
+  the Secret — but the password PG accepts for new connections now
+  matches `edgeai-db`.
 - **Namespaces.** The chart installs into a single namespace. Cross-
   namespace Secret references (e.g. DB in `db-team`, control plane
   in `edgeai-system`) are not natively supported; bring the Secret
@@ -273,6 +290,7 @@ reading `.Values.db.existingSecret` directly. This guarantees:
 | `helm install` fails with `nil pointer evaluating interface{}`      | A required `*.existingSecret` is set but the Secret has the wrong key. Inspect the Secret with `kubectl get secret -o yaml` and compare to the [key list](#secret-inventory). |
 | mTLS handshake fails between gateway and edge-agents                 | The CA in the apiserver / gateway Secrets does not match. When bringing your own CA, both `apiserver.ca` and `gatewayRuntime.tls` must be issued (or chained) by the same root. |
 | DB connection refused after install                                  | The bundled Postgres takes 20–30s to become ready. `apiserver` / `controller` / `gateway` retry on backoff; check `kubectl get pods -n edgeai-system`. |
+| `apiserver` / `controller` / `gateway` log `password authentication failed for user "postgres"` | Two Secrets (`edgeai-db` and `<release>-postgresql-secret`) drifted; restore a single source of truth as described in [Upgrading from chart versions that auto-generated `<release>-postgresql-secret`](#operational-notes). |
 
 For deeper background on the secrets that flow through the platform,
 see [`docs/design/02-node-onboarding-security.md`](../design/02-node-onboarding-security.md)
