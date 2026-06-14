@@ -4,10 +4,12 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"math/big"
 	"testing"
 	"time"
 
@@ -92,6 +94,97 @@ func generateTestCSR(t *testing.T, cn string) []byte {
 		t.Fatalf("create CSR: %v", err)
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER})
+}
+
+// generateSelfSignedRSACA returns a self-signed CA pair (cert PEM +
+// PKCS#1 RSA private key PEM). The two share a fresh RSA 2048 key so
+// the signer can use them together.
+func generateSelfSignedRSACA(t *testing.T) (certPEM, keyPEM []byte) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate RSA key: %v", err)
+	}
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "RSA Test CA"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create RSA CA: %v", err)
+	}
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM = pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	})
+	return certPEM, keyPEM
+}
+
+// generateSelfSignedPKCS8ECA returns a self-signed CA pair (cert PEM +
+// PKCS#8 EC private key PEM). The two share a fresh EC P-256 key.
+func generateSelfSignedPKCS8ECA(t *testing.T) (certPEM, keyPEM []byte) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate EC key: %v", err)
+	}
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(2),
+		Subject:               pkix.Name{CommonName: "PKCS8 Test CA"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create PKCS#8 CA: %v", err)
+	}
+	pkcs8DER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("marshal PKCS#8: %v", err)
+	}
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8DER})
+	return certPEM, keyPEM
+}
+
+// verifyIssuedCert checks that the issued cert PEM chains back to the
+// supplied CA cert PEM (i.e. the issuer signature is valid and the
+// issued cert's issuer DN matches the CA's subject).
+func verifyIssuedCert(issuedPEM, caCertPEM []byte) error {
+	iblock, _ := pem.Decode(issuedPEM)
+	if iblock == nil {
+		return errors.New("issued PEM decode failed")
+	}
+	issued, err := x509.ParseCertificate(iblock.Bytes)
+	if err != nil {
+		return err
+	}
+	cblock, _ := pem.Decode(caCertPEM)
+	if cblock == nil {
+		return errors.New("CA cert PEM decode failed")
+	}
+	ca, err := x509.ParseCertificate(cblock.Bytes)
+	if err != nil {
+		return err
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(ca)
+	if _, err := issued.Verify(x509.VerifyOptions{
+		Roots:     pool,
+		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func TestNewSigner_HappyPath(t *testing.T) {
@@ -188,9 +281,10 @@ func TestNewSigner_InvalidKeyPEM(t *testing.T) {
 	}
 }
 
-func TestNewSigner_KeyNotECDSA(t *testing.T) {
+func TestNewSigner_InvalidRSAKeyBytes(t *testing.T) {
 	caCert, _ := generateTestCA(t)
-	// Encode an RSA PKCS1 key — pki.NewSigner expects ECDSA so this must fail.
+	// RSA PRIVATE KEY is a valid PEM block type, but the inner bytes
+	// are not a real PKCS#1 RSA key, so ParsePKCS1PrivateKey must fail.
 	rsaKeyPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "RSA PRIVATE KEY",
 		Bytes: []byte("definitely not a real key"),
@@ -201,7 +295,84 @@ func TestNewSigner_KeyNotECDSA(t *testing.T) {
 		CertValidity: time.Hour,
 	})
 	if err == nil {
-		t.Fatal("expected error when CA key is not ECDSA")
+		t.Fatal("expected error when RSA key bytes are invalid")
+	}
+}
+
+// TestNewSigner_RSAKey exercises the chart path: sprig `genCA` produces
+// a PKCS#1 RSA key in a "RSA PRIVATE KEY" PEM block. The signer must
+// accept it and be able to issue a leaf certificate from it.
+func TestNewSigner_RSAKey(t *testing.T) {
+	caCert, caKeyPEM := generateSelfSignedRSACA(t)
+
+	signer, err := pki.NewSigner(pki.SignerConfig{
+		CACertPEM:    caCert,
+		CAKeyPEM:     caKeyPEM,
+		CertValidity: time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("NewSigner with RSA key: %v", err)
+	}
+	if signer == nil {
+		t.Fatal("expected non-nil signer")
+	}
+
+	// Round-trip: signer must be able to issue a leaf cert using the
+	// RSA CA key. The CSR is generated with a fresh EC node key; the
+	// issued cert is then verified against the CA's RSA public key.
+	csrPEM := generateTestCSR(t, "n1")
+	res, err := signer.SignCSR(csrPEM, "n1")
+	if err != nil {
+		t.Fatalf("SignCSR with RSA CA key: %v", err)
+	}
+	if err := verifyIssuedCert(res.CertPEM, caCert); err != nil {
+		t.Fatalf("issued cert failed verification against RSA CA: %v", err)
+	}
+}
+
+// TestNewSigner_PKCS8Key exercises the PKCS#8 envelope path. Operators
+// who bring their own CA Secret may use any standard toolchain
+// (openssl, cfssl, step) which often produces PKCS#8 by default.
+func TestNewSigner_PKCS8Key(t *testing.T) {
+	caCert, caKeyPEM := generateSelfSignedPKCS8ECA(t)
+
+	signer, err := pki.NewSigner(pki.SignerConfig{
+		CACertPEM:    caCert,
+		CAKeyPEM:     caKeyPEM,
+		CertValidity: time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("NewSigner with PKCS#8 key: %v", err)
+	}
+	if signer == nil {
+		t.Fatal("expected non-nil signer")
+	}
+
+	csrPEM := generateTestCSR(t, "n1")
+	res, err := signer.SignCSR(csrPEM, "n1")
+	if err != nil {
+		t.Fatalf("SignCSR with PKCS#8 CA key: %v", err)
+	}
+	if err := verifyIssuedCert(res.CertPEM, caCert); err != nil {
+		t.Fatalf("issued cert failed verification against PKCS#8 CA: %v", err)
+	}
+}
+
+func TestNewSigner_UnsupportedKeyPEM(t *testing.T) {
+	caCert, _ := generateTestCA(t)
+	// A "CERTIFICATE" PEM block is structurally a valid block but not
+	// a private key. The dispatcher must reject it explicitly.
+	wrongTypePEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: []byte("not a real certificate"),
+	})
+	_, err := pki.NewSigner(pki.SignerConfig{
+		CACertPEM:    caCert,
+		CAKeyPEM:     wrongTypePEM,
+		CertValidity: time.Hour,
+	})
+	if err == nil {
+		t.Fatal("expected error for unsupported PEM block type")
 	}
 }
 

@@ -1,7 +1,7 @@
 package pki
 
 import (
-	"crypto/ecdsa"
+	"crypto"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
@@ -15,9 +15,16 @@ import (
 
 // Signer issues certificates using a CA key pair. In production the CA private
 // key MUST only reside in the Control Plane process.
+//
+// The CA key is stored as a crypto.PrivateKey so the signer accepts both RSA
+// material (e.g. produced by the chart's sprig `genCA` helper, which emits
+// PKCS#1 RSA) and ECDSA material (e.g. produced in-process by
+// GenerateSelfSignedCA, which emits PKCS#1 EC). x509.CreateCertificate only
+// requires a crypto.Signer, so any algorithm that implements that interface
+// (RSA, ECDSA, Ed25519) works without further changes here.
 type Signer struct {
 	caCert *x509.Certificate
-	caKey  *ecdsa.PrivateKey
+	caKey  crypto.PrivateKey
 	caPEM  []byte
 
 	certValidity time.Duration
@@ -41,11 +48,7 @@ func NewSigner(cfg SignerConfig) (*Signer, error) {
 		return nil, fmt.Errorf("pki: parse CA cert: %w", err)
 	}
 
-	keyBlock, _ := pem.Decode(cfg.CAKeyPEM)
-	if keyBlock == nil {
-		return nil, fmt.Errorf("pki: failed to decode CA key PEM")
-	}
-	caKey, err := x509.ParseECPrivateKey(keyBlock.Bytes)
+	caKey, err := parsePrivateKeyPEM(cfg.CAKeyPEM)
 	if err != nil {
 		return nil, fmt.Errorf("pki: parse CA key: %w", err)
 	}
@@ -61,6 +64,32 @@ func NewSigner(cfg SignerConfig) (*Signer, error) {
 		caPEM:        cfg.CACertPEM,
 		certValidity: validity,
 	}, nil
+}
+
+// parsePrivateKeyPEM decodes a PEM-encoded private key, accepting the three
+// on-the-wire formats we expect to see for the apiserver CA:
+//
+//   - "RSA PRIVATE KEY"  (PKCS#1)   — produced by sprig's `genCA` chart helper
+//   - "EC PRIVATE KEY"   (PKCS#1)   — produced in-process by GenerateSelfSignedCA
+//   - "PRIVATE KEY"      (PKCS#8)   — generic envelope; algorithm is auto-detected
+//
+// Returns the raw crypto.PrivateKey so callers can pass it straight to
+// x509.CreateCertificate, which only requires a crypto.Signer.
+func parsePrivateKeyPEM(pemBytes []byte) (crypto.PrivateKey, error) {
+	block, _ := pem.Decode(pemBytes)
+	if block == nil {
+		return nil, fmt.Errorf("pki: failed to decode CA key PEM")
+	}
+	switch block.Type {
+	case "RSA PRIVATE KEY":
+		return x509.ParsePKCS1PrivateKey(block.Bytes)
+	case "EC PRIVATE KEY":
+		return x509.ParseECPrivateKey(block.Bytes)
+	case "PRIVATE KEY":
+		return x509.ParsePKCS8PrivateKey(block.Bytes)
+	default:
+		return nil, fmt.Errorf("pki: unsupported CA key PEM block type %q", block.Type)
+	}
 }
 
 // CAPem returns the PEM-encoded CA certificate.
