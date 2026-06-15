@@ -201,7 +201,7 @@ func TestGatewayManagementService_UpdateGateway_HappyPath(t *testing.T) {
 	svc := newTestGatewayService(t)
 	now := time.Date(2026, 6, 13, 12, 0, 0, 0, time.UTC)
 	store.SetRowForQuery(updateGatewaySQL, []driver.Value{
-		"id-1", "gw-1", "us", []byte(`{"env":"prod"}`), "Active", "https://gw-1:7443", now, now,
+		"id-1", "gw-1", "us", []byte(`{"env":"prod"}`), "Active", "https://gw-1:8443", now, now,
 	})
 	resp, err := svc.UpdateGateway(context.Background(), &pb.UpdateGatewayRequest{
 		Id:       "id-1",
@@ -213,6 +213,81 @@ func TestGatewayManagementService_UpdateGateway_HappyPath(t *testing.T) {
 	}
 	if resp.GetGateway().GetId() != "id-1" {
 		t.Errorf("Id = %q", resp.GetGateway().GetId())
+	}
+}
+
+// TestGatewayManagementService_UpdateGateway_Region covers the new
+// `region` field on UpdateGatewayRequest. The mem-driver fingerprint
+// is the same `updateGatewaySQL` substring, so this also serves as a
+// regression guard against the server silently dropping the new arg.
+func TestGatewayManagementService_UpdateGateway_Region(t *testing.T) {
+	svc := newTestGatewayService(t)
+	now := time.Date(2026, 6, 13, 12, 0, 0, 0, time.UTC)
+	store.SetRowForQuery(updateGatewaySQL, []driver.Value{
+		"id-1", "gw-1", "cn-east-1", []byte(`{}`), "Active", "https://gw-1:8443", now, now,
+	})
+	resp, err := svc.UpdateGateway(context.Background(), &pb.UpdateGatewayRequest{
+		Id:     "id-1",
+		Region: "cn-east-1",
+	})
+	if err != nil {
+		t.Fatalf("UpdateGateway: %v", err)
+	}
+	if got := resp.GetGateway().GetRegion(); got != "cn-east-1" {
+		t.Errorf("Region = %q, want cn-east-1", got)
+	}
+}
+
+// TestGatewayManagementService_UpdateGateway_RegionEmptyKeepsExisting
+// pins the COALESCE contract documented in the proto: an empty
+// `region` does NOT clear the column, so a CLI invocation that
+// forgets to pass --region cannot accidentally wipe a previously
+// set region. Empty string here maps to "no change" via
+// NULLIF($3, ”) in the SQL.
+func TestGatewayManagementService_UpdateGateway_RegionEmptyKeepsExisting(t *testing.T) {
+	svc := newTestGatewayService(t)
+	now := time.Date(2026, 6, 13, 12, 0, 0, 0, time.UTC)
+	// The returned row still has the pre-update region because the
+	// server only overwrites when the request carries a non-empty
+	// value.
+	store.SetRowForQuery(updateGatewaySQL, []driver.Value{
+		"id-1", "gw-1", "cn-east-1", []byte(`{"env":"prod"}`), "Active", "", now, now,
+	})
+	resp, err := svc.UpdateGateway(context.Background(), &pb.UpdateGatewayRequest{
+		Id:     "id-1",
+		Region: "",
+	})
+	if err != nil {
+		t.Fatalf("UpdateGateway: %v", err)
+	}
+	if got := resp.GetGateway().GetRegion(); got != "cn-east-1" {
+		t.Errorf("Region = %q, want existing cn-east-1 (empty request must not clobber)", got)
+	}
+}
+
+// TestGatewayManagementService_UpdateGateway_LabelsNilKeepsExisting
+// guards the new `marshalLabels` nil branch. CLI callers that
+// don't pass --label should leave the JSON column untouched, even
+// though they set endpoint / region.
+func TestGatewayManagementService_UpdateGateway_LabelsNilKeepsExisting(t *testing.T) {
+	svc := newTestGatewayService(t)
+	now := time.Date(2026, 6, 13, 12, 0, 0, 0, time.UTC)
+	store.SetRowForQuery(updateGatewaySQL, []driver.Value{
+		"id-1", "gw-1", "us-east-1", []byte(`{"site":"shanghai"}`), "Active", "https://gw-1:7443", now, now,
+	})
+	resp, err := svc.UpdateGateway(context.Background(), &pb.UpdateGatewayRequest{
+		Id:     "id-1",
+		Region: "us-east-1",
+		// Labels intentionally nil — the COALESCE must keep the
+		// pre-existing labels, and the service returns them in
+		// the response.
+	})
+	if err != nil {
+		t.Fatalf("UpdateGateway: %v", err)
+	}
+	labels := resp.GetGateway().GetLabels().GetItems()
+	if got := labels["site"]; got != "shanghai" {
+		t.Errorf("labels[site] = %q, want shanghai (nil Labels must not clobber existing JSON column)", got)
 	}
 }
 
@@ -373,10 +448,19 @@ func TestGatewayManagementService_ListGateways_QueryError(t *testing.T) {
 	}
 }
 
+// marshalLabels distinguishes "caller omitted Labels" (nil → SQL NULL
+// → COALESCE keeps the existing JSON column) from "caller explicitly
+// passed an empty Labels struct" (non-nil → `{}` → COALESCE
+// overwrites the column with an empty object). The previous
+// implementation collapsed both cases to `{}`, which silently
+// clobbered existing labels whenever a caller did not pass any.
+// UpdateGateway relies on the new contract; CreateGateway has a
+// separate code path that always supplies a non-nil Labels struct
+// when the operator passes --label, so it is unaffected.
 func TestMarshalLabels_NilInput(t *testing.T) {
 	got := marshalLabels(nil)
-	if string(got) != "{}" {
-		t.Errorf("marshalLabels(nil) = %q, want %q", got, "{}")
+	if got != nil {
+		t.Errorf("marshalLabels(nil) = %q, want nil (caller omitted Labels → SQL NULL → keep existing)", string(got))
 	}
 }
 

@@ -58,31 +58,41 @@ resolve_install_command() {
 
 usage() {
   cat <<EOF
-Usage: GATEWAY_ID=<id> CONTROL_PLANE_ADDR=<addr> TOKEN=<token> [OPTIONS] bash install-edge-agent.sh
+Usage: GATEWAY_ID=<id> GATEWAY_ADDR=<addr> TOKEN=<token> [OPTIONS] bash install-edge-agent.sh
 
 Environment Variables (all optional unless noted):
-  GATEWAY_ID           Gateway ID (required)
-  CONTROL_PLANE_ADDR   Control plane gRPC address (required)
-                       e.g. ai-edge-apiserver.edgeai-system.svc.cluster.local:9090
-  TOKEN                Bootstrap token from edgectl (required)
-  BINARY_URL           URL to download edge-agent binary (optional)
-                       Defaults to GitHub release for current version
-  REPO                 GitHub repository for releases (default: tangming1996/ai-edge)
-  DATA_DIR             Local data directory (default: /var/lib/edge-agent)
-  HTTP_ADDR            Agent HTTP listen address (default: :8080)
+  GATEWAY_ID          Gateway ID (required)
+  GATEWAY_ADDR        Gateway runtime gRPC address (required, mTLS port 9443)
+                      e.g. ai-edge-gateway-runtime.edgeai-system.svc.cluster.local:9443
+                      Legacy alias: CONTROL_PLANE_ADDR (deprecated, kept for back-compat)
+  TOKEN               Bootstrap token from edgectl (required)
+  BINARY_URL          URL to download edge-agent binary (optional)
+                      Defaults to GitHub release for current version
+  REPO                GitHub repository for releases (default: tangming1996/ai-edge)
+  DATA_DIR            Local data directory (default: /var/lib/edge-agent)
+  HTTP_ADDR           Agent HTTP listen address (default: :8080)
 
 Example:
   curl -sL https://raw.githubusercontent.com/tangming1996/ai-edge/main/manifests/scripts/install-edge-agent.sh | \\
     GATEWAY_ID=gateway-01 \\
-    CONTROL_PLANE_ADDR=ai-edge-apiserver.edgeai-system.svc.cluster.local:9090 \\
+    GATEWAY_ADDR=ai-edge-gateway-runtime.edgeai-system.svc.cluster.local:9443 \\
     TOKEN=eyJ... \\
     bash
 EOF
   exit 1
 }
 
+# Back-compat: accept the legacy CONTROL_PLANE_ADDR name. Edge-agent only ever
+# talks to the gateway-runtime (port 9443, mTLS); it never connects to the
+# apiserver directly. The old name and "Control plane gRPC address" wording
+# were misleading — see AGENTS.md for the actual call graph.
+if [[ -z "${GATEWAY_ADDR:-}" ]] && [[ -n "${CONTROL_PLANE_ADDR:-}" ]]; then
+  echo "WARNING: CONTROL_PLANE_ADDR is deprecated, use GATEWAY_ADDR instead" >&2
+  GATEWAY_ADDR="$CONTROL_PLANE_ADDR"
+fi
+
 [[ -z "${GATEWAY_ID:-}" ]] && { echo "ERROR: GATEWAY_ID is required"; usage; }
-[[ -z "${CONTROL_PLANE_ADDR:-}" ]] && { echo "ERROR: CONTROL_PLANE_ADDR is required"; usage; }
+[[ -z "${GATEWAY_ADDR:-}" ]] && { echo "ERROR: GATEWAY_ADDR is required (or the deprecated alias CONTROL_PLANE_ADDR)"; usage; }
 [[ -z "${TOKEN:-}" ]] && { echo "ERROR: TOKEN is required"; usage; }
 
 BINARY_URL="${BINARY_URL:-}"
@@ -149,7 +159,7 @@ chmod 700 "$CONFIG_DIR" "$DATA_DIR"
 cat > "${CONFIG_DIR}/config.json" <<CONF
 {
   "gateway_id": "${GATEWAY_ID}",
-  "gateway_addr": "${CONTROL_PLANE_ADDR}",
+  "gateway_addr": "${GATEWAY_ADDR}",
   "gateway_http_addr": "",
   "token": "${TOKEN}",
   "data_dir": "${DATA_DIR}",

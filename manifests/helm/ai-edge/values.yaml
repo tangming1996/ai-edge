@@ -83,8 +83,41 @@ gatewayRuntime:
     - key: node.edgeai.io/role
       value: gateway
       effect: NoSchedule
+  # When true, the gateway-runtime pod calls
+  # GatewayService.CreateGateway against the apiserver on startup so
+  # the gateway row exists before any bootstrap token is created.
+  # The call is idempotent on the gateway NAME, so rolling upgrades
+  # and reboots do not duplicate rows. Disable only if you want to
+  # keep the old "manually INSERT INTO gateways" workflow (e.g. when
+  # the apiserver is offline at install time and you bootstrap the
+  # table from a SQL dump).
+  #
+  # NOTE: per-gateway business attributes (name / region / endpoint)
+  # are intentionally NOT exposed as chart-level values, and the
+  # DaemonSet does NOT read them from K8s Node annotations either —
+  # the Downward API for `metadata.annotations[...]` only surfaces
+  # the Pod's own annotations, not the Node's, so the earlier
+  # annotation-based wiring was silently producing empty env vars
+  # (NAME falling back to the node name, REGION / ENDPOINT being
+  # dropped entirely). The current contract is:
+  #   - NAME  = K8s node name, via `fieldRef: spec.nodeName`.
+  #   - REGION / ENDPOINT / labels are operator-controlled
+  #     metadata that does not change on every Pod restart. They
+  #     are filled in after `helm install` via
+  #     `edgectl gateway update <name> --region ... --endpoint ...`,
+  #     see `cmd/edgectl/gateway.go` and `docs/cli-usage.md § 1.4.3`.
+  # `gatewayRuntime.env.GATEWAY_NAME` / `GATEWAY_REGION` /
+  # `GATEWAY_ENDPOINT` remain available for debug / unit-test
+  # purposes only; production charts must leave them unset.
+  autoRegister: true
   env:
-    CONTROL_PLANE_ADDR: "ai-edge-apiserver.edgeai-system.svc.cluster.local:9090"
+    # CONTROL_PLANE_ADDR is intentionally NOT set here. The chart
+    # auto-derives it from the apiserver Service FQDN via the
+    # `ai-edge.apiserverAddr` helper, so renaming the release no
+    # longer breaks the gateway-runtime → apiserver link. If you
+    # really need to override (e.g. point at a manually deployed
+    # apiserver outside the cluster), inject the env in your own
+    # values overlay.
     HTTP_ADDR: ":8081"
     GRPC_ADDR: ":9443"
     CACHE_DIR: "/var/lib/edgeai/gateway-cache"
@@ -241,3 +274,46 @@ db:
   password: ""
   database: edgeai
   sslmode: disable
+
+# Database migrations.
+#
+# On every `helm install` / `helm upgrade` the chart renders a
+# pre-install,pre-upgrade Job that runs `golang-migrate` against the
+# target database using the same credentials as the apiserver. This
+# removes the "table is missing" footgun that previously required an
+# out-of-band `make migrate-up`.
+#
+# The Job is a Helm hook: it is created before the rest of the release
+# and removed after a successful run. Helm blocks the install/upgrade
+# until the Job reports `Complete`, so apiserver / controller / gateway
+# pods only ever start against a fully migrated schema.
+migration:
+  # Master switch. Set to false to skip automatic migrations — useful
+  # when the operator runs migrations out of band (e.g. against a
+  # managed Postgres with a maintenance window) and wants the chart to
+  # leave the schema alone.
+  enabled: true
+  # Image used to run the migrations. Defaults to the upstream
+  # `migrate/migrate` image so the chart stays self-contained — no
+  # extra Go binary or build step is required. Override when running in
+  # an air-gapped environment that mirrors the image into a private
+  # registry.
+  image:
+    repository: migrate/migrate
+    tag: v4.17.1
+    # Override `global.imagePullPolicy` for the migration Job when the
+    # upstream tag changes (Helm tag immutability is the same story
+    # as for the rest of the chart).
+    pullPolicy: ""
+  # Backoff and TTL for the migration Job. Most runs complete in
+  # seconds; a cold start against a fresh database can take ~30s while
+  # the bundled Postgres pod is being created and made ready.
+  activeDeadlineSeconds: 600
+  backoffLimit: 5
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi

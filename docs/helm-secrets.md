@@ -40,6 +40,19 @@ how to point it at secrets you already own.
 | `<fullname>-gateway-tls`     | gateway-runtime                      | `gatewayRuntime.tls.generate=true`                                 | `tls.crt`, `tls.key`, (`ca.crt` if chained) |
 | `<fullname>-gateway-ca`      | gateway-runtime                      | `gatewayRuntime.ca.generate=true` (and no apiserver CA generated)  | `ca.crt`                                    |
 
+## Prerequisites
+
+- **Kubernetes 1.24+**. The chart no longer reads K8s Node
+  annotations via the Downward API — `gateway-runtime` registers
+  itself on first boot and only uses `fieldRef: spec.nodeName`,
+  which has been GA since 1.24. The earlier K8s 1.27+ requirement
+  (raised for `metadata.annotations['...']` Downward API) has
+  been removed; see `manifests/README.md` for the rationale.
+- **Helm 3.10+**. Required for `hook-delete-policy: before-hook-creation`
+  and `helm.sh/hook-weight`.
+- **kubectl 1.24+** for routine cluster operations
+  (`kubectl get pod -o jsonpath='{.spec.nodeName}'` etc).
+
 `<release>` is the Helm release name (`{{ .Release.Name }}`).
 `<fullname>` is `<release>-<chart-name>` (`{{ include "ai-edge.fullname" . }}`, so for release `edgeai` it is `edgeai-ai-edge`).
 
@@ -128,6 +141,81 @@ server cert. This avoids the chicken-and-egg of "who signs the signer".
 The cert / key pairs are generated with Helm's `genCA` / `genSignedCert`
 / `genSelfSignedCert` helpers at template render time and live in
 `kubernetes.io/tls` Secrets.
+
+## Database migrations
+
+Schema migrations are not a Secret but they are part of the same
+"helm install must be self-sufficient" guarantee. The chart ships every
+file under `migrations/*.up.sql` / `migrations/*.down.sql` as a
+ConfigMap, and renders a pre-install,pre-upgrade Helm hook Job that runs
+`migrate/migrate` against the same database the control plane points
+at. The Job is gated on `.Values.migration.enabled` (default `true`).
+
+```yaml
+# In manifests/helm/ai-edge/values.yaml
+migration:
+  enabled: true                # master switch
+  image:
+    repository: migrate/migrate
+    tag: v4.17.1
+  activeDeadlineSeconds: 600
+  backoffLimit: 5
+  resources:
+    requests: { cpu: 50m,  memory: 64Mi }
+    limits:   { cpu: 200m, memory: 128Mi }
+```
+
+Lifecycle:
+
+1. `helm install` / `helm upgrade` enters the `pre-install,pre-upgrade`
+   phase. The chart renders a ConfigMap (`<fullname>-migrations`) and a
+   Job (`<fullname>-migrate`) with the same hooks.
+2. The Job's container runs
+   `migrate -path /migrations -database $DATABASE_URL up`. The
+   `DATABASE_URL` is composed from `.Values.db.username` /
+   `.Values.db.database` / `.Values.db.sslmode` plus the password
+   sourced from the Secret resolved by `ai-edge.dbSecretName`. The host
+   is `.Values.db.host`, or the in-chart PostgreSQL Service FQDN when
+   `postgresql.enabled=true`.
+3. `golang-migrate` is idempotent: an already up-to-date database
+   reports "no change" and exits 0.
+4. Helm blocks the rest of the release until the Job reports
+   `Complete`. If the Job fails, the install / upgrade rolls back.
+5. The previous run's ConfigMap and Job are cleaned up by
+   `helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded`
+   before the next hook fires.
+
+Inspect what the chart will do without installing:
+
+```sh
+helm template ./manifests/helm/ai-edge \
+  --set postgresql.enabled=true \
+  --set minio.enabled=true \
+  --set apiserver.ca.generate=true \
+  --set gatewayRuntime.tls.generate=true \
+  | grep -A 30 'kind: Job' | head -60
+```
+
+Inspect logs after a real install:
+
+```sh
+kubectl logs -n edgeai-system -l app.kubernetes.io/component=migration --tail=200
+```
+
+When to opt out (`migration.enabled=false`):
+
+- The database is managed by a DBA team with its own change-window
+  policy.
+- You want to run the migration from a CI pipeline / dedicated job
+  runner before the helm release, then let `helm install` skip the hook.
+- You are upgrading from a chart version that did not ship the
+  migration hook and want to keep the old `make migrate-up` flow for
+  one cycle.
+
+If you opt out, the apiserver / controller / gateway pods will still
+start (the chart does not gate them on the migration Job), so make
+sure the schema is at the version expected by the deployed image
+**before** rolling out an upgrade.
 
 ## Deployment scenarios
 
@@ -238,6 +326,9 @@ reading `.Values.db.existingSecret` directly. This guarantees:
 
 | Helper                       | Resolves to                                                       |
 |------------------------------|-------------------------------------------------------------------|
+| `ai-edge.fullname`           | `<release>-<chart>` (drops the redundant prefix when the release name is the same as the chart name) |
+| `ai-edge.apiserverAddr`      | `<fullname>-apiserver.<ns>.svc.cluster.local:<grpcPort>` — used by gateway-runtime's `CONTROL_PLANE_ADDR` |
+| `ai-edge.gatewayRuntimeAddr` | `<fullname>-gateway-runtime.<ns>.svc.cluster.local:<grpcPort>` — reserved for in-cluster callers |
 | `ai-edge.dbSecretName`       | DB credentials consumed by apiserver / controller / gateway / bundled Postgres |
 | `ai-edge.postgresPasswordSecretName` | Source of `POSTGRES_PASSWORD` for the bundled Postgres pod (`postgresql.auth.existingSecret` → falls back to `dbSecretName`) |
 | `ai-edge.minioSecretName`    | Bundled MinIO root credentials                                    |
@@ -291,6 +382,9 @@ reading `.Values.db.existingSecret` directly. This guarantees:
 | DB connection refused after install                                  | The bundled Postgres takes 20–30s to become ready. `apiserver` / `controller` / `gateway` retry on backoff; check `kubectl get pods -n edgeai-system`. |
 | `apiserver` / `controller` / `gateway` log `password authentication failed for user "postgres"` | Two Secrets (`edgeai-db` and `<release>-postgresql-secret`) drifted; restore a single source of truth as described in [Upgrading from chart versions that auto-generated `<release>-postgresql-secret`](#operational-notes). |
 | `apiserver` logs `init signer: open /etc/edgeai/pki/ca.key: no such file or directory` and exits | The mounted CA Secret is missing a `ca.key` key. With `apiserver.ca.generate=true` the chart writes both `ca.crt`/`ca.key` (consumed by the apiserver) and `tls.crt`/`tls.key` (consumed as `kubernetes.io/tls`); if you bring your own Secret, ensure it contains `ca.crt` **and** `ca.key` at the root — the apiserver reads `CA_CERT_PATH=/etc/edgeai/pki/ca.crt` and `CA_KEY_PATH=/etc/edgeai/pki/ca.key` from the mounted volume. |
+| `helm install` rolls back; `<fullname>-migrate` Job is `Error` with `connection refused` | Most common when `postgresql.enabled=true`: the bundled Postgres pod was not yet ready when the hook ran. The chart's `backoffLimit=5` + `activeDeadlineSeconds=600` usually self-heals; if it doesn't, inspect the Postgres pod (`kubectl get pods -n <ns> -l app.kubernetes.io/name=postgresql`) and rerun `helm upgrade`. |
+| Migration Job `Error`: `dialect postgres: write tcp ...: connection reset by peer` against an external managed Postgres | A network policy / SG / VPC peering is blocking the hook Pod from reaching the database. Run `kubectl describe job <fullname>-migrate -n <ns>` and check the cluster's egress rules for the hook Job's ServiceAccount. The Job runs in the same namespace as the rest of the chart and uses the cluster's default ServiceAccount. |
+| Migration Job reports `no migration found` | The chart's `migrations/` directory is empty or the files were excluded by `.helmignore`. Inspect with `helm template ... | grep -A 30 'kind: ConfigMap'`; the ConfigMap should contain one key per `*.up.sql` / `*.down.sql`. |
 
 For deeper background on the secrets that flow through the platform,
 see [`docs/design/02-node-onboarding-security.md`](../design/02-node-onboarding-security.md)

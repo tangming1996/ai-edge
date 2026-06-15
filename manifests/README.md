@@ -15,12 +15,17 @@ manifests/
 ├── helm/ai-edge/                 # 主 Helm Chart
 │   ├── Chart.yaml
 │   ├── values.yaml               # 完整配置参考
+│   ├── migrations/               # 打包到 Chart 的数据库迁移 SQL
+│   │   ├── 000001_create_gateways.up.sql
+│   │   ├── ...
+│   │   └── 000013_create_gateway_runtime_instances.up.sql
 │   └── templates/
-│       ├── _helpers.tpl          # 辅助函数（镜像 / Secret 名解析 / DB host / PVC）
+│       ├── _helpers.tpl          # 辅助函数（fullname / 镜像 / Secret 名解析 / DB host / PVC）
 │       ├── NOTES.txt             # 安装后提示（含 Secret 清单和节点安装命令）
 │       ├── apiserver.yaml        # API Server Deployment + Service
 │       ├── controller.yaml       # Controller Deployment
 │       ├── gateway-runtime.yaml  # Gateway Runtime DaemonSet + Service
+│       ├── migration-job.yaml    # Helm pre-install/upgrade hook Job：自动跑 golang-migrate
 │       ├── postgresql.yaml       # 可选：Chart 内置 PostgreSQL 16-alpine
 │       ├── minio.yaml            # 可选：Chart 内置 MinIO
 │       ├── prometheus.yaml       # 可选：Chart 内置 Prometheus
@@ -45,6 +50,52 @@ manifests/
 | `gateway-runtime` | Helm DaemonSet | 边缘网关代理，运行在标记了 `node.edgeai.io/role=gateway` 的节点 |
 | `edge-agent` | **节点级二进制** | 运行在每台边缘服务器上，非 K8s Workload，通过 `install-edge-agent.sh` 安装 |
 | `edgectl` | **客户端 CLI** | 云端操作员工具，通过 `install-edgectl.sh` 安装 |
+
+## 安装特性总览
+
+Helm Chart 在 V1 之后经过了若干轮收紧，下面三件事是 **默认行为**——大多数用户不再需要手动介入。
+
+### 组件名称不再重复
+
+`helm install ai-edge ./helm/ai-edge` 现在只会得到 `ai-edge-apiserver`、`ai-edge-controller`、`ai-edge-gateway-runtime`，**不再**出现 `ai-edge-ai-edge-apiserver` 这种二级前缀。`_helpers.tpl` 的 `ai-edge.fullname` 会在 `Release.Name == Chart.Name` 时去掉冗余前缀；只有用其他名字 release（如 `helm install prod ./ai-edge`）时才会拼成 `prod-ai-edge-apiserver`，便于多环境并存。配套地，新增的 `ai-edge.apiserverAddr` 辅助函数把 apiserver Service 的 FQDN 注入到 gateway-runtime 的 `CONTROL_PLANE_ADDR`，rename release 不会再把 gateway 跟 apiserver 之间的链路打断。
+
+### 数据库自动迁移
+
+Chart 把仓库根目录 `migrations/*.sql` 一并打包，安装 / 升级时自动渲染一个 `pre-install,pre-upgrade` Hook Job 运行 `migrate/migrate` CLI：
+
+- 数据载体：`<release>-ai-edge-migrations` ConfigMap，键名与 `migrations/` 下文件名一致。
+- 触发时机：每次 `helm install` / `helm upgrade` 都跑；Job 报告 `Complete` 之前 Helm 不会进入下一阶段。
+- 凭据：复用 `db.secretName`（或 `db.existingSecret`）的 `password` 字段，host 走 `db.host` 或内置 PG Service FQDN。
+- 关掉它：`migration.enabled=false`（适用于「我在外部维护 Postgres、不希望 Helm 触碰 schema」的场景）。
+- 详见 [§ 7.6](#76-数据库自动迁移) 与 [`docs/helm-secrets.md`](../docs/helm-secrets.md) 的相关章节。
+
+### Gateway 自注册（不再手插表 / 不再读节点 annotation）
+
+`gateway-runtime` 在启动时通过 `GATEWAY_AUTO_REGISTER=true`（Chart 默认 `true`）主动调用 `GatewayService.CreateGateway`，按 gateway **NAME** 幂等创建 / 查找记录。**操作员不再需要手工 `INSERT INTO gateways`**，也**不再**给节点打 `edgeai.io/gateway-*` annotation——NAME 直接来自 K8s 节点名（`spec.nodeName`）。
+
+```bash
+# 默认行为：helm install 完成后，gateways 表里应该已经有每节点一行
+kubectl exec -n edgeai-system deploy/ai-edge-apiserver -- \
+    edgectl gateway list
+```
+
+如果 Helm 安装时把 `gatewayRuntime.autoRegister` 关掉了（例如你希望手工控制 gateway 生命周期），或者想创建一个**额外**的独立 gateway region，可以从外部用 `edgectl`：
+
+```bash
+edgectl --server apiserver:9090 \
+    gateway register --name gateway-shanghai \
+    --region cn-east-1 \
+    --endpoint gateway-shanghai.example.com:9443
+# 末行固定输出 gateway_id: <uuid>，便于 shell 捕获
+GATEWAY_ID=$(edgectl ... gateway register ... | tail -n1 | awk '{print $2}')
+```
+
+> 注意：`gateway-runtime` 内部用的「gateway id」是 K8s 节点名（`spec.nodeName`），apiserver 自动分配的 UUID 仅记录在日志和 `CACHE_DIR/apiserver_gateway_id` 里，**不**改写运行时变量——下游 dispatcher / task store 都用节点名做归属判断，调换会破坏一致性。详见 [docs/design/03-gateway.md § 4.3.6](../docs/design/03-gateway.md)。
+
+> **为什么不在 chart values 里提供 `gatewayRuntime.name/region/endpoint`？**
+> `gatewayRuntime` 是 DaemonSet，每个匹配的节点都会跑一个 Pod；把这三个值放在 `values.yaml` 等于强制所有 Pod 注册到同一个 gateway 实体——多 region 集群下是错的，单 region 也容易误填。曾经尝试通过 K8s Node Annotation + Downward API 把每节点属性注入到 Pod，但 `metadata.annotations[...]` Downward API 只能读到 **Pod 自己的** annotation（Pod 不会继承 Node 的 annotation），那个方案其实是「沉默地失败」——变量被设为空字符串，看上去工作但 region / endpoint 全被吞掉。
+>
+> 现在的方案是「先自注册，必要时再补登记」：自注册只把节点名写进 `gateways` 表的 NAME 字段，需要给某个 region 配 endpoint / region 元数据时，再用 `edgectl gateway update` 改（见 [docs/cli-usage.md § 1.4](../docs/cli-usage.md)）。不再依赖 K8s 1.27+ 的 `metadata.annotations` 能力。
 
 ## 1. 构建容器镜像
 
@@ -242,18 +293,97 @@ kubectl get all,secret,configmap -n edgeai-system -l app.kubernetes.io/instance=
 
 ## 5. 节点接入（edge-agent）
 
-`edge-agent` 不通过 Helm 部署，而是在每台边缘服务器上独立安装：
+`edge-agent` 不通过 Helm 部署，而是在每台边缘服务器上独立安装。完整流程分三步：
+
+### 5.1 取得 gateway_id
+
+默认情况下，gateway-runtime Pod 在 `GATEWAY_AUTO_REGISTER=true` 时**自动**向 apiserver 调用 `CreateGateway`，因此 `helm install` 完成后 `gateways` 表里应该已经有每节点一行（NAME = K8s 节点名）。可以直接查：
 
 ```bash
-# 在每台边缘节点上执行
+kubectl exec -n edgeai-system deploy/ai-edge-apiserver -- \
+    edgectl gateway list
+```
+
+如果 Helm 安装时把 `gatewayRuntime.autoRegister` 关掉了（例如你希望手工控制 gateway 生命周期），或者想给同一个 region 增补一条记录（多 region 共享一个 control plane），可以从外部用 `edgectl`：
+
+```bash
+# 在 apiserver 可达的管理机上执行
+edgectl --server <apiserver>:9090 \
+    gateway register \
+    --name gateway-shanghai \
+    --region cn-east-1 \
+    --endpoint gateway-shanghai.example.com:9443
+
+# 末行固定输出 gateway_id: <uuid>
+GATEWAY_ID=$(edgectl ... gateway register ... | tail -n1 | awk '{print $2}')
+```
+
+> 自注册的 gateway **NAME** 就是 K8s 节点名（来自 `fieldRef: spec.nodeName`），
+> 不是 UUID；同名 `register` 会复用同一行，**不会**重复插入。
+
+#### 5.1.1 补登记 region / endpoint（post-register）
+
+自注册只把节点名写进 `gateways.name`，region / endpoint / labels 这些业务属性**不在自注册路径里**——它们是操作员控制的元数据，Pod 每次重启都不应该重写。需要在安装完成后给某条 gateway 补 region / endpoint，用 `edgectl gateway update`：
+
+```bash
+# 把 gateway name 解析成 UUID 后再 update；update 支持 endpoint / labels
+edgectl --server <apiserver>:9090 \
+    gateway update gateway-shanghai \
+    --endpoint gateway-shanghai.example.com:9443 \
+    --label env=prod --label site=shanghai
+```
+
+完整字段说明见 [docs/cli-usage.md § 1.4](../docs/cli-usage.md)。
+
+> **节点级 gateway 业务属性的来源 — 不再走 Node Annotation**。
+> 旧版本曾尝试用 `kubectl annotate node ... edgeai.io/gateway-name=...`
+> 加 K8s 1.27+ 的 `fieldRef: metadata.annotations['...']` Downward API 把每节点
+> 属性注入到 Pod，但 Downward API 只能读到 **Pod 自己的** annotation
+> （Pod 不会继承 Node 的 annotation），那段配置实际上是「沉默地失败」
+> ——变量被设为空字符串，看上去工作但 region / endpoint 全被吞掉。
+> 当前的「自注册 + edgectl gateway update」两段式既不依赖 K8s 1.27+ 特性，
+> 也避免了在 chart values 里硬塞节点级配置导致多 Pod 共用同一身份的问题。
+
+### 5.2 申请 bootstrap token
+
+```bash
+kubectl exec -n edgeai-system deploy/ai-edge-apiserver -- \
+    edgectl token create \
+    --gateway "$GATEWAY_ID" \
+    --expires-in 24h \
+    --max-uses 50 \
+    --description "shanghai-batch-1"
+```
+
+输出的 `Plaintext` 字段是节点首次注册的凭证，**只显示一次**。
+
+### 5.3 标记 gateway node + 安装 edge-agent
+
+```bash
+# 1) 标记希望运行 gateway-runtime / 接收 edge-agent 的节点
+kubectl label node <node-name> node.edgeai.io/role=gateway
+
+# 2) （可选）给该 gateway 补 region / endpoint 元数据。
+#    NAME 已经由 §5.1 自注册按节点名创建，这里只改元数据。
+edgectl --server <apiserver>:9090 \
+    gateway update <node-name> \
+    --region cn-east-1 \
+    --endpoint <node-name>.example.com:9443
+
+# 3) 在每台边缘节点上执行
 curl -sL https://raw.githubusercontent.com/tangming1996/ai-edge/main/manifests/scripts/install-edge-agent.sh | \
-    GATEWAY_ID=<gateway-id> \
-    CONTROL_PLANE_ADDR=ai-edge-apiserver.edgeai-system.svc.cluster.local:9090 \
-    TOKEN=<bootstrap-token> \
+    GATEWAY_ID="$GATEWAY_ID" \
+    GATEWAY_ADDR=ai-edge-gateway-runtime.edgeai-system.svc.cluster.local:9443 \
+    TOKEN=<bootstrap-token-plaintext> \
     bash
 ```
 
-安装后检查状态：
+> 注:`GATEWAY_ADDR` 指向 **gateway-runtime** 的 gRPC 端口 (默认 9443, mTLS),不是
+> apiserver。edge-agent 启动后只与 gateway-runtime 通信,经由它再访问 apiserver
+> 和 controller。旧名 `CONTROL_PLANE_ADDR` 仍可作为 alias 使用,会打印 deprecation
+> 警告。
+>
+> 安装后检查状态：
 
 ```bash
 systemctl status edge-agent
@@ -329,6 +459,10 @@ kubectl exec -n edgeai-system deploy/ai-edge-apiserver -- \
 | `gatewayRuntime.tls.commonName` | 自动签发时的 CN | `edgeai-gateway` |
 | `gatewayRuntime.ca.existingSecret` | 使用已有的 gateway CA bundle | `""` |
 | `gatewayRuntime.ca.generate` | 自动生成 gateway CA | `false` |
+| `gatewayRuntime.autoRegister` | 启动时向 apiserver 调用 `CreateGateway`（按 gateway NAME 幂等） | `true` |
+| `gatewayRuntime.env.*` | 进程级运行时配置（HTTP_ADDR / GRPC_ADDR / CACHE_DIR / 各 TTL / …） | 详见 `values.yaml` |
+
+> 自注册的 gateway **NAME** = K8s 节点名；region / endpoint 等业务属性**不在 chart values 暴露**，统一在 helm install 完成后用 `edgectl gateway update` 补登记——详见 [§ 5.1](#51-取得-gateway_id) 与 [docs/design/03-gateway.md § 4.3.6](../docs/design/03-gateway.md)。`gatewayRuntime.env.GATEWAY_NAME` / `GATEWAY_REGION` / `GATEWAY_ENDPOINT` 这三个 env 是内部 debug / 单元测试接口，**生产不应**在 chart 里覆盖。
 
 ### 7.4 内置中间件
 
@@ -361,6 +495,44 @@ kubectl exec -n edgeai-system deploy/ai-edge-apiserver -- \
 > 优先级：设置了 `db.existingSecret` → 使用你的 Secret；否则若 `postgresql.enabled=true` → 自动创建并发布 `db.secretName`；否则不创建任何 DB Secret，部署会因 `DB_HOST` 为空而 `Pending`/`Running` 但连不上库。
 >
 > 启用内置 PostgreSQL 时，Postgres Pod 直接从 `db.secretName`（默认 `edgeai-db`）读取 `POSTGRES_PASSWORD`——它**不**再独立生成 `*-postgresql-secret`，从根上避免 Postgres 与应用组件的密码漂移。如果是从早于本次重构的版本升级，旧 release 中的 `*-postgresql-secret` 仍是孤儿 Secret（chart 不会再渲染它），需要 `helm uninstall` 后重新 `helm install` 才能彻底清理（或手动 `kubectl delete secret`）。
+
+### 7.6 数据库自动迁移
+
+> 完整背景与 troubleshooting 见 [`docs/helm-secrets.md`](../docs/helm-secrets.md#迁移job)。
+
+| Key | 说明 | 默认值 |
+|-----|------|--------|
+| `migration.enabled` | 总开关；设为 `false` 时 chart 不会渲染迁移 Job / ConfigMap | `true` |
+| `migration.image.repository` | 迁移使用的镜像 | `migrate/migrate` |
+| `migration.image.tag` | 镜像 tag | `v4.17.1` |
+| `migration.image.pullPolicy` | 镜像拉取策略（为空时继承 `global.imagePullPolicy`） | `""` |
+| `migration.activeDeadlineSeconds` | 单次 Job 运行的硬超时 | `600` |
+| `migration.backoffLimit` | Job 重试次数上限 | `5` |
+| `migration.resources` | 迁移容器的资源 requests / limits | `cpu: 50m/200m, mem: 64Mi/128Mi` |
+
+工作流程：
+
+1. `helm install` / `helm upgrade` 进入 `pre-install,pre-upgrade` 阶段，Helm 渲染 `<release>-ai-edge-migrations` ConfigMap 和 `<release>-ai-edge-migrate` Job。
+2. ConfigMap 装载 `migrations/*.up.sql` / `*.down.sql` 到容器内的 `/migrations/`。
+3. Job 容器执行 `migrate -path /migrations -database $DATABASE_URL up`；`golang-migrate` 在幂等模式下：未应用过则全部应用，已最新则 no-op。
+4. Job 进入 `Complete` 状态后 Helm 才继续 `pre-install,pre-upgrade` 的后续钩子及主资源渲染。
+5. 旧 ConfigMap / Job 在下一次 hook 触发前由 `before-hook-creation,hook-succeeded` 删除策略清理。
+
+如果安装时想看一眼迁移日志：
+
+```bash
+kubectl logs -n edgeai-system -l app.kubernetes.io/component=migration \
+    --tail=200
+```
+
+常见故障：
+
+| 现象 | 原因 / 处置 |
+|------|------------|
+| Job 卡在 `ContainerCreating` 等 `migrations` ConfigMap | 检查是否有人在外部改了 ConfigMap 的 ownerReference；正常情况下 hook 阶段会自行创建。 |
+| Job 退 `Error`，`no migration found` | 仓库内 `migrations/` 缺失或被打包过滤掉；`helm install --dry-run --debug ./helm/ai-edge` 看 ConfigMap data 列表。 |
+| 报告 `connection refused` | 走到内置 PG 时常见：PG Pod 还没 `Ready` 时迁移 Job 已经启动。Job 的 `backoffLimit=5` + `activeDeadlineSeconds=600` 通常能自愈，若持续失败可 `kubectl get pods -n edgeai-system -l app.kubernetes.io/name=postgresql` 排查 PG 自身。 |
+| 想跳过迁移 | 临时 `helm install ... --set migration.enabled=false`，等生产维护窗口再 `helm upgrade` 重新开启。 |
 
 ## 8. Helm 校验 / 排错
 

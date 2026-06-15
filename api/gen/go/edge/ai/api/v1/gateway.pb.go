@@ -426,11 +426,19 @@ func (x *ListGatewaysResponse) GetPage() *PageResponse {
 	return nil
 }
 
+// UpdateGatewayRequest is a PATCH-style request: every field except
+// `id` is optional, and the server applies COALESCE semantics — an
+// empty / unset field leaves the corresponding column untouched. This
+// lets `edgectl gateway update` change one attribute at a time
+// (e.g. fix an incorrect `--region` without dropping the labels).
 type UpdateGatewayRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Labels        *Labels                `protobuf:"bytes,2,opt,name=labels,proto3" json:"labels,omitempty"`
-	Endpoint      string                 `protobuf:"bytes,3,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Id       string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Labels   *Labels                `protobuf:"bytes,2,opt,name=labels,proto3" json:"labels,omitempty"`
+	Endpoint string                 `protobuf:"bytes,3,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	// Region, when non-empty, overwrites `gateways.region`. An unset
+	// or empty region leaves the existing value in place.
+	Region        string `protobuf:"bytes,4,opt,name=region,proto3" json:"region,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -482,6 +490,13 @@ func (x *UpdateGatewayRequest) GetLabels() *Labels {
 func (x *UpdateGatewayRequest) GetEndpoint() string {
 	if x != nil {
 		return x.Endpoint
+	}
+	return ""
+}
+
+func (x *UpdateGatewayRequest) GetRegion() string {
+	if x != nil {
+		return x.Region
 	}
 	return ""
 }
@@ -642,11 +657,12 @@ const file_edge_ai_api_v1_gateway_proto_rawDesc = "" +
 	"\x06region\x18\x02 \x01(\tR\x06region\"}\n" +
 	"\x14ListGatewaysResponse\x123\n" +
 	"\bgateways\x18\x01 \x03(\v2\x17.edge.ai.api.v1.GatewayR\bgateways\x120\n" +
-	"\x04page\x18\x02 \x01(\v2\x1c.edge.ai.api.v1.PageResponseR\x04page\"r\n" +
+	"\x04page\x18\x02 \x01(\v2\x1c.edge.ai.api.v1.PageResponseR\x04page\"\x8a\x01\n" +
 	"\x14UpdateGatewayRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12.\n" +
 	"\x06labels\x18\x02 \x01(\v2\x16.edge.ai.api.v1.LabelsR\x06labels\x12\x1a\n" +
-	"\bendpoint\x18\x03 \x01(\tR\bendpoint\"J\n" +
+	"\bendpoint\x18\x03 \x01(\tR\bendpoint\x12\x16\n" +
+	"\x06region\x18\x04 \x01(\tR\x06region\"J\n" +
 	"\x15UpdateGatewayResponse\x121\n" +
 	"\agateway\x18\x01 \x01(\v2\x17.edge.ai.api.v1.GatewayR\agateway\"&\n" +
 	"\x14DeleteGatewayRequest\x12\x0e\n" +

@@ -1,0 +1,126 @@
+{{/*
+Database migration ConfigMap + Helm hook Job.
+
+The chart ships every `migrations/*.up.sql` and `migrations/*.down.sql`
+file as a ConfigMap so the migration container can mount them under
+`/migrations` and pass that path to the `migrate` CLI. A Job with
+`pre-install,pre-upgrade` hooks runs the migrations before the rest of
+the release materialises; Helm blocks the install/upgrade until the Job
+reports `Complete`, so apiserver / controller / gateway pods only ever
+start against a fully migrated schema.
+
+The Job is gated on .Values.migration.enabled. Operators who manage
+migrations out of band (e.g. through a maintenance window against a
+managed Postgres) can set the flag to false to keep Helm from racing
+them.
+*/}}
+{{- if .Values.migration.enabled }}
+{{- $dbHost := include "ai-edge.dbHost" . }}
+{{- if and (not $dbHost) .Values.postgresql.enabled }}
+{{- $dbHost = printf "%s-postgresql.%s.svc.cluster.local" .Release.Name .Release.Namespace }}
+{{- end }}
+{{- if not $dbHost }}
+{{- fail "migration job requires a database host: set postgresql.enabled=true or db.host" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-edge.fullname" . }}-migrations
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-edge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  # Helm hook annotation: the ConfigMap is created before the install /
+  # upgrade Job runs, and removed once the hook phase finishes.
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+data:
+  # Read every migration pair from the chart's migrations/ directory
+  # and ship it as a ConfigMap key. The keys keep the original
+  # `<seq>_<name>.up.sql` / `.down.sql` layout so the `migrate` CLI
+  # can find them under /migrations in lexical order.
+  {{- range $path, $bytes := .Files.Glob "migrations/*.up.sql" }}
+  {{ base $path }}: |-
+    {{ $.Files.Get $path | nindent 4 }}
+  {{- end }}
+  {{- range $path, $bytes := .Files.Glob "migrations/*.down.sql" }}
+  {{ base $path }}: |-
+    {{ $.Files.Get $path | nindent 4 }}
+  {{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ai-edge.fullname" . }}-migrate
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-edge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    # The pre-install hook runs once per install. The pre-upgrade
+    # hook runs before every `helm upgrade`, so schema changes are
+    # applied automatically.
+    "helm.sh/hook": pre-install,pre-upgrade
+    # Weight 0 (default) keeps the Job after the ConfigMap (-5) so
+    # the data is available when the container starts.
+    "helm.sh/hook-weight": "0"
+    # Keep the most recent successful Job for `kubectl describe` /
+    # `kubectl logs` debugging; drop the rest.
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  # The migration is idempotent: re-running it on an up-to-date
+  # database is a no-op. `backoffLimit` covers the cold-start case
+  # where the bundled Postgres pod is not yet ready.
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  # ttlSecondsAfterFinished is intentionally NOT set: the
+  # `before-hook-creation` delete policy already cleans up before the
+  # next hook fires, and a stale Job object is useful for audit
+  # purposes.
+  template:
+    metadata:
+      name: {{ include "ai-edge.fullname" . }}-migrate
+      labels:
+        {{- include "ai-edge.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: OnFailure
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.migration.image.repository }}:{{ .Values.migration.image.tag }}"
+          imagePullPolicy: {{ .Values.migration.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          # `migrate -path /migrations -database "$DATABASE_URL" up`
+          # is idempotent: it applies every pending migration in
+          # order, then exits 0. Subsequent runs are a no-op.
+          command:
+            - /migrate
+            - -path
+            - /migrations
+            - -database
+            - $(DATABASE_URL)
+            - up
+          env:
+            - name: DATABASE_URL
+              value: "postgres://{{ .Values.db.username }}:$(DB_PASSWORD)@{{ $dbHost }}:{{ .Values.db.port }}/{{ .Values.db.database }}?sslmode={{ .Values.db.sslmode }}"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-edge.dbSecretName" . }}
+                  key: password
+          resources:
+            {{- toYaml .Values.migration.resources | nindent 12 }}
+          volumeMounts:
+            - name: migrations
+              mountPath: /migrations
+              readOnly: true
+      volumes:
+        - name: migrations
+          configMap:
+            name: {{ include "ai-edge.fullname" . }}-migrations
+{{- end }}

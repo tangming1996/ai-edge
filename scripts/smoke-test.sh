@@ -83,10 +83,15 @@ HTTP_ADDR="http://localhost:8080"
 # ------------------------------------------------------------------
 info "=== gRPC Smoke Tests ==="
 
-info "Creating gateway..."
-GATEWAY_ID=$(docker compose exec -T postgres psql -U postgres -d edgeai -t -A -c \
-    "INSERT INTO gateways (name, region, labels, endpoint, status) VALUES ('test-gw', 'us-west-2', '{}', 'grpc://localhost:9090', 'Active') RETURNING id;")
-[ -n "$GATEWAY_ID" ] || fail "Failed to create gateway"
+info "Creating gateway via edgectl gateway register..."
+REGISTER_OUTPUT=$("$EDGECTL" --server "$GRPC_ADDR" gateway register \
+    --name "test-gw-$$" \
+    --region "us-west-2" \
+    --endpoint "grpc://localhost:9090" 2>&1) || \
+    fail "edgectl gateway register failed: $REGISTER_OUTPUT"
+echo "$REGISTER_OUTPUT"
+GATEWAY_ID=$(echo "$REGISTER_OUTPUT" | grep -E '^gateway_id: ' | tail -n1 | awk '{print $2}')
+[ -n "$GATEWAY_ID" ] || fail "Failed to parse gateway_id from edgectl output"
 info "  Gateway ID: $GATEWAY_ID"
 
 info "Creating bootstrap token via edgectl..."

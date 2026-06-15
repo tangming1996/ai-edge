@@ -68,6 +68,58 @@ func main() {
 		}
 	}()
 
+	// Self-register the gateway with the apiserver when explicitly
+	// enabled (GATEWAY_AUTO_REGISTER=true). This removes the legacy
+	// "manually INSERT INTO gateways" step from the install runbook:
+	// the chart sets the env var on the DaemonSet, and on first boot
+	// each node calls GatewayService.CreateGateway. Re-runs are
+	// idempotent on the gateway NAME, so rolling upgrades do not
+	// duplicate rows.
+	//
+	// The local `gatewayID` variable (driven by GATEWAY_ID, typically
+	// the K8s node name) is intentionally NOT remapped to the
+	// apiserver-assigned UUID: downstream components (dispatcher,
+	// task store) use the node name as the gateway identity and
+	// changing that would break dispatch checks. The UUID returned
+	// by the apiserver is recorded for the operator's benefit (log
+	// line, file under CACHE_DIR) but does not flow into the
+	// runtime's RPC handlers.
+	if envBool("GATEWAY_AUTO_REGISTER") {
+		regCtx, regCancel := context.WithTimeout(context.Background(), 60*time.Second)
+		// Self-register creates a `gateways` row in the apiserver
+		// using only the node name as the gateway NAME. Per-gateway
+		// business attributes (region / endpoint / display name) are
+		// intentionally NOT set here — they are operator-controlled
+		// metadata that does not change every time a Pod restarts,
+		// and exposing them as Helm values would force every
+		// DaemonSet Pod to register under the same identity.
+		//
+		// Operators are expected to maintain those attributes out of
+		// band via:
+		//   $ edgectl --server apiserver:9090 gateway update \
+		//       <gateway-name> --region cn-east-1 --endpoint ...
+		// The `Name` env var is still honored for the rare case where
+		// a node is renamed or the operator wants a friendlier name
+		// than `spec.nodeName`; when empty, SelfRegister falls back
+		// to GatewayID (= GATEWAY_ID = spec.nodeName).
+		regResult, regErr := gateway.SelfRegister(regCtx, upstreamConn, gateway.SelfRegisterConfig{
+			GatewayID: gatewayID,
+			Region:    envOrDefault("GATEWAY_REGION", ""),
+			Endpoint:  envOrDefault("GATEWAY_ENDPOINT", ""),
+			Name:      envOrDefault("GATEWAY_NAME", ""),
+			Labels: map[string]string{
+				"node_name":      gatewayID,
+				"runtime_source": "gateway-runtime",
+			},
+		})
+		regCancel()
+		if regErr != nil {
+			log.Fatalf("gateway-runtime: self-register: %v", regErr)
+		}
+		log.Printf("gateway-runtime: apiserver_gateway_id=%s name=%q (local gateway_id=%s unchanged)",
+			regResult.GatewayID, regResult.Name, gatewayID)
+	}
+
 	identityCache := gateway.NewIdentityCache(gateway.IdentityCacheConfig{
 		DB:  db,
 		TTL: envOrDefaultDuration("IDENTITY_CACHE_TTL", 30*time.Second),
@@ -229,4 +281,17 @@ func envOrDefaultDuration(key string, def time.Duration) time.Duration {
 		}
 	}
 	return def
+}
+
+// envBool returns true when the named env var is set to a truthy value.
+// "1", "true", "TRUE", "yes" (case-insensitive) all enable the flag;
+// anything else (including unset) is treated as false. The function
+// exists so feature toggles like GATEWAY_AUTO_REGISTER follow the same
+// opt-in semantics as Kubernetes' downward API.
+func envBool(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }

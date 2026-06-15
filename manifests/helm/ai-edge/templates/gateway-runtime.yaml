@@ -60,7 +60,11 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: CONTROL_PLANE_ADDR
-              value: {{ .Values.gatewayRuntime.env.CONTROL_PLANE_ADDR }}
+              value: {{ include "ai-edge.apiserverAddr" . | quote }}
+            {{- if .Values.gatewayRuntime.autoRegister }}
+            - name: GATEWAY_AUTO_REGISTER
+              value: "true"
+            {{- end }}
             - name: GRPC_ADDR
               value: {{ .Values.gatewayRuntime.env.GRPC_ADDR }}
             - name: HTTP_ADDR

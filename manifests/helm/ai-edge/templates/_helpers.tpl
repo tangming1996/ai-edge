@@ -7,11 +7,37 @@ Expand the name of the chart.
 
 {{/*
 Create a default fully qualified app name.
+We strip the redundant prefix when the release name already matches
+the chart name — `helm install ai-edge ./ai-edge` should produce
+`ai-edge-apiserver`, not `ai-edge-ai-edge-apiserver`. This mirrors
+the convention used by the Bitnami / stable helm charts.
 */}}
 {{- define "ai-edge.fullname" -}}
-{{- $name := default .Chart.Name .Values.nameOverride }}
-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
-{{- end }}
+{{- $name := default .Chart.Name .Values.nameOverride -}}
+{{- if eq .Release.Name $name -}}
+{{- $name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Fully qualified apiserver Service address: <fullname>-apiserver.<ns>.svc.cluster.local:<port>.
+Used by gateway-runtime's CONTROL_PLANE_ADDR so the value tracks the
+chart / release name automatically and never drifts.
+*/}}
+{{- define "ai-edge.apiserverAddr" -}}
+{{- printf "%s-apiserver.%s.svc.cluster.local:%d" (include "ai-edge.fullname" .) .Release.Namespace (.Values.apiserver.service.grpcPort | int) -}}
+{{- end -}}
+
+{{/*
+Fully qualified gateway-runtime Service address: <fullname>-gateway-runtime.<ns>.svc.cluster.local:<port>.
+Reserved for future in-cluster callers (controller / apiserver push
+to gateway). Surfaced here so the chart keeps one source of truth.
+*/}}
+{{- define "ai-edge.gatewayRuntimeAddr" -}}
+{{- printf "%s-gateway-runtime.%s.svc.cluster.local:%d" (include "ai-edge.fullname" .) .Release.Namespace (.Values.gatewayRuntime.service.grpcPort | int) -}}
+{{- end -}}
 
 {{/*
 Create chart name and version as used by the chart label.

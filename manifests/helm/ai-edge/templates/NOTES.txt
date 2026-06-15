@@ -111,22 +111,67 @@ the same `ca.crt` in the gateway TLS secret. You can verify with:
 
 == Next Steps ==
 
-1. Create bootstrap tokens for node onboarding:
-   $ kubectl exec -n {{ .Release.Namespace }} deploy/{{ include "ai-edge.fullname" . }}-apiserver -- \
-     edgectl token create --gateway <gateway-id> --expires-in 24h
+1. Verify the gateway row was created automatically (the chart sets
+   GATEWAY_AUTO_REGISTER=true on the DaemonSet, so each gateway node
+   calls GatewayService.CreateGateway on first boot, using the K8s
+   node name as the gateway NAME). You can list gateways without
+   leaving the cluster:
 
-2. Label gateway nodes:
+   $ kubectl exec -n {{ .Release.Namespace }} deploy/{{ include "ai-edge.fullname" . }}-apiserver -- \
+     edgectl gateway list
+
+   If GATEWAY_AUTO_REGISTER is disabled, register the gateway explicitly:
+
+   $ kubectl exec -n {{ .Release.Namespace }} deploy/{{ include "ai-edge.fullname" . }}-apiserver -- \
+     edgectl gateway register --name <gateway-name> --region <region>
+   # Last line is always: gateway_id: <uuid>
+
+2. (Optional, post-register) Backfill the per-gateway business
+   attributes (region / endpoint / labels). Self-registration only
+   writes the NAME (= node name); use `edgectl gateway update` to
+   fill in the rest:
+
+   $ kubectl exec -n {{ .Release.Namespace }} deploy/{{ include "ai-edge.fullname" . }}-apiserver -- \
+     edgectl gateway update <gateway-name> \
+       --region cn-east-1 \
+       --endpoint gateway-shanghai-01.example.com:9443
+
+3. Create bootstrap tokens for node onboarding (use the gateway_id
+   from step 1):
+
+   $ kubectl exec -n {{ .Release.Namespace }} deploy/{{ include "ai-edge.fullname" . }}-apiserver -- \
+     edgectl token create --gateway <gateway_id> --expires-in 24h
+
+4. Label the nodes that should run gateway-runtime (the node label
+   is the only node-side configuration that matters now; the old
+   `edgeai.io/gateway-*` annotations are no longer read by the
+   DaemonSet):
+
    $ kubectl label node <node-name> node.edgeai.io/role=gateway
 
-3. Install edge-agent on edge nodes (run on each node):
+5. Install edge-agent on edge nodes (run on each node):
+
    $ curl -sL https://raw.githubusercontent.com/tangming1996/ai-edge/main/manifests/scripts/install-edge-agent.sh | \
-       GATEWAY_ID=<gateway-id> \
-       CONTROL_PLANE_ADDR={{ include "ai-edge.fullname" . }}-apiserver.{{ .Release.Namespace }}.svc.cluster.local:443 \
+       GATEWAY_ID=<gateway_id> \
+       GATEWAY_ADDR={{ include "ai-edge.fullname" . }}-gateway-runtime.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.gatewayRuntime.service.grpcPort }} \
        TOKEN=<bootstrap-token> \
        bash
 
-4. Install edgectl on your management machine:
+6. Install edgectl on your management machine:
+
    $ curl -sL https://raw.githubusercontent.com/tangming1996/ai-edge/main/manifests/scripts/install-edgectl.sh | bash
+
+== Database migrations ==
+
+Database schema migrations run automatically as a pre-install,pre-upgrade
+Helm hook Job ({{ include "ai-edge.fullname" . }}-migrate). The chart ships
+every migrations/*.sql file as a ConfigMap; the Job runs `migrate -path
+/migrations -database $DATABASE_URL up` against {{ if .Values.postgresql.enabled }}the bundled PostgreSQL{{ else }}{{ .Values.db.host }}{{ end }} and Helm
+blocks the rest of the release until it reports Complete. Inspect the log with:
+
+  $ kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/component=migration --tail=200
+
+To opt out, set `--set migration.enabled=false` and run migrations out of band.
 
 == Required Pre-requisites ==
 

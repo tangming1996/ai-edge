@@ -90,7 +90,91 @@ edgectl node revoke <node-id>
 
 吊销后节点证书立即失效，节点再次连接时会收到 `IdentityRevoked` 错误。
 
-### 1.4 deployment — 模型部署管理
+### 1.4 gateway — Gateway 管理
+
+Gateway 是区域级逻辑实体。`gateways` 表的主键（UUID）由 apiserver 生成；操作员**不应**直接 `INSERT INTO gateways`——`edgectl gateway` 是唯一的官方入口。
+
+#### 1.4.1 注册 gateway（推荐）
+
+```bash
+edgectl gateway register \
+  --name gateway-shanghai \
+  --region cn-east-1 \
+  --endpoint gateway-shanghai.example.com:9443 \
+  --label env=prod --label site=shanghai
+```
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `--name` | 是 | 唯一 name（DNS-1123-ish，≤ 63 字符）；同名重复调用是幂等的 |
+| `--region` | 否 | 区域标识，便于多 region 过滤 |
+| `--endpoint` | 否 | 边缘节点访问该 gateway 使用的公网 mTLS 地址（host:port） |
+| `--label` | 否 | `key=value` 形式，可重复 |
+
+输出（多行人读 + 末行机读）：
+
+```
+Gateway registered.
+ID:       6f0a3b51-...
+Name:     gateway-shanghai
+Region:   cn-east-1
+Endpoint: gateway-shanghai.example.com:9443
+Labels:   env=prod,site=shanghai
+gateway_id: 6f0a3b51-...
+```
+
+末行的 `gateway_id: <id>` 固定在最后，方便 shell 直接捕获：
+
+```bash
+GATEWAY_ID=$(edgectl gateway register --name gateway-shanghai --region cn-east-1 \
+    | tail -n1 | awk '{print $2}')
+```
+
+#### 1.4.2 列出 / 查询 / 删除
+
+```bash
+# 全部 gateway
+edgectl gateway list
+# 按 region 过滤
+edgectl gateway list --region cn-east-1
+# 按 id 或 name 查询
+edgectl gateway get <gateway-id>
+edgectl gateway get gateway-shanghai --by-name
+# 软删除（status 置为 Deleted，关联 bootstrap token 同步失效）
+edgectl gateway delete <gateway-id>
+```
+
+> 如果走 Helm Chart 部署，gateway-runtime Pod 默认在 `GATEWAY_AUTO_REGISTER=true` 时
+> 自动调用本节 register，所以大多数安装不需要单独运行这条命令；
+> 显式 `register` 主要用于：把多个 region 合并到同一个控制面、或在未启用 auto-register
+> 的环境里手工补建 gateway。
+
+#### 1.4.3 更新 gateway 业务属性
+
+自注册（`register`）只把 NAME 写进 `gateways` 表，region / endpoint / labels 是
+**操作员控制**的元数据——它们不属于 Pod 启动的输入，Pod 重启不应该反复覆盖。
+自注册完成后用 `edgectl gateway update` 补登记：
+
+```bash
+# update 接受 id 或 name（name 模式自动 --by-name）
+edgectl gateway update gateway-shanghai \
+    --region cn-east-1 \
+    --endpoint gateway-shanghai.example.com:9443 \
+    --label env=prod --label site=shanghai
+```
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| 位置参数 | 是 | gateway id 或 name（name 模式通过 `--by-name` 切换） |
+| `--region` | 否 | 区域标识，覆盖 / 写入 `gateways.region` |
+| `--endpoint` | 否 | 公网 mTLS endpoint（host:port），覆盖 `gateways.endpoint` |
+| `--label` | 否 | `key=value` 形式，可重复；`--label` 后面带 `-`（`--label -`）可清空单个 key |
+
+> `gateway update` 不会动 NAME（NAME 是 K8s 节点名，承担运行期身份），也不会
+> 重置已经发放的 bootstrap token。如果需要彻底下架某 gateway，用
+> `edgectl gateway delete <id>`（软删除，`status=Deleted`）。
+
+### 1.5 deployment — 模型部署管理
 
 #### 创建部署任务
 
@@ -107,7 +191,7 @@ edgectl deployment create \
 | `--gateway` | 目标 Gateway ID |
 | `--runtime` | 推理运行时类型，如 `tensorrt`、`vllm`、`llamacpp`、`onnx`，`auto` 表示由平台自动选择 |
 
-### 1.5 task — 任务查看
+### 1.6 task — 任务查看
 
 #### 列出任务
 
@@ -181,20 +265,42 @@ HTTP_ADDR=:8081 \
 
 | 环境变量 | 必填 | 默认值 | 说明 |
 |---------|------|--------|------|
-| `GATEWAY_ID` | 是 | 无 | 逻辑 Gateway ID，需与数据库 `gateways` 表中记录一致 |
-| `CONTROL_PLANE_ADDR` | 是 | `localhost:9090` | Control Plane apiserver gRPC 地址 |
+| `GATEWAY_ID` | 是 | 无 | gateway-runtime 实例的运行时标识；通常等于 K8s 节点名（downward API 注入），必须与 bootstrap token 绑定的 gateway 对应 |
+| `CONTROL_PLANE_ADDR` | 是 | `localhost:9090` | Control Plane apiserver gRPC 地址（Helm Chart 由 `ai-edge.apiserverAddr` 辅助函数自动渲染成 Service FQDN） |
+| `GATEWAY_AUTO_REGISTER` | 否 | `false` | 设为 `true` / `1` / `yes` / `on` 时，启动后向 apiserver 调用 `CreateGateway`，按 gateway NAME 幂等。Helm Chart 默认 `true` |
+| `GATEWAY_NAME` | 否 | `GATEWAY_ID` | **仅 debug / 单测使用**。自注册时使用的 gateway NAME；未设置时退回到 `GATEWAY_ID`。Helm Chart **不在生产** 覆盖此 env（多 region 集群会让所有 DaemonSet Pod 用同一 NAME 注册）。 |
+| `GATEWAY_REGION` | 否 | `""` | **仅 debug / 单测使用**。自注册时附带的 region 字段。生产路径下 region 由 `edgectl gateway update` 在自注册后补登记，避免 Pod 重启反复覆盖。 |
+| `GATEWAY_ENDPOINT` | 否 | `""` | **仅 debug / 单测使用**。自注册时附带的公网 mTLS endpoint（host:port）。生产路径下 endpoint 由 `edgectl gateway update` 在自注册后补登记。 |
 | `HTTP_ADDR` | 否 | `:8081` | artifact HTTP、healthz、metrics 监听端口 |
 | `GRPC_ADDR` | 否 | `:9443` | gRPC 监听端口 |
 | `GATEWAY_TLS_CERT_PATH` | 否 | 无 | mTLS 服务器证书路径 |
 | `GATEWAY_TLS_KEY_PATH` | 否 | 无 | mTLS 私钥路径 |
 | `GATEWAY_CA_CERT_PATH` | 否 | 无 | mTLS 客户端 CA 证书路径 |
-| `CACHE_DIR` | 否 | `./var/lib/gateway-runtime/cache` | 模型制品本地缓存目录 |
+| `CACHE_DIR` | 否 | `./var/lib/gateway-runtime/cache` | 模型制品本地缓存目录；apiserver 分配的 gateway UUID 也会落到该目录下的 `apiserver_gateway_id` |
 | `UPSTREAM_BASE_URL` | 否 | `http://localhost:9000` | MinIO/S3 对象存储地址 |
 | `IDENTITY_CACHE_TTL` | 否 | `30s` | 节点身份缓存 TTL |
 | `TASK_CLAIM_DURATION` | 否 | `5m` | 任务 claim 锁定时长 |
 | `CONNECTIVITY_CHECK_INTERVAL` | 否 | `10s` | 云端连通性检测间隔 |
 | `CONNECTIVITY_TIMEOUT` | 否 | `5s` | 连通性检测超时 |
 | `CLOUD_HEALTH_URL` | 否 | 无 | 云端健康检查 URL，为空则跳过连通性检测 |
+
+> **节点级配置（`GATEWAY_NAME` / `GATEWAY_REGION` / `GATEWAY_ENDPOINT`）的来源 — 不再走 Node Annotation**。
+> `gateway-runtime` 是 DaemonSet，每个节点一个 Pod；放在环境变量 / chart values
+> 里强制所有 Pod 共用同一组身份，多 region 集群下会出错。旧版本曾用
+> `fieldRef: metadata.annotations['edgeai.io/gateway-*']`（K8s 1.27+ Downward
+> API）注入，但那只是把 **Pod 自己的** annotation 拉出来——Pod 不会继承
+> Node 的 annotation，结果是「沉默地失败」，region / endpoint 全部被吞掉。
+>
+> 现在的契约是：
+>
+> - **NAME** 走 `fieldRef: spec.nodeName`（Pod 调度完成后回写到 spec，是合法的 Downward API 路径）。
+> - **REGION / ENDPOINT / labels** 在 helm install 完成后用 `edgectl gateway update` 补登记（见 [§ 1.4.3](#143-更新-gateway-业务属性)），属于**操作员控制**的元数据，不会被 Pod 重启反复覆盖。
+> - `GATEWAY_NAME` / `GATEWAY_REGION` / `GATEWAY_ENDPOINT` 这三个 env **仅供 debug / 单测**，生产 chart 不应覆盖。
+>
+> 自注册成功时，gateway-runtime 会在启动日志打印 `apiserver_gateway_id=<uuid> name="<name>"`。
+> **运行时仍以 `GATEWAY_ID`（节点名）作为 gateway 标识**——apiserver UUID 仅用于
+> 审计 / 关联，下游 dispatcher / task store 不允许用它做归属判断，详见
+> [`03-gateway.md` § 4.3.6](./design/03-gateway.md)。
 
 > 如果 `GATEWAY_TLS_CERT_PATH` / `GATEWAY_TLS_KEY_PATH` / `GATEWAY_CA_CERT_PATH` 未完整配置，gateway-runtime 会以**非 mTLS 模式**启动，便于本地开发联调。**生产环境必须配置完整 mTLS。**
 
@@ -255,7 +361,7 @@ make test         # go test -race -cover
 # Proto 代码生成
 make proto        # buf generate
 
-# 数据库迁移
+# 数据库迁移（开发环境，Helm Chart 部署时已自动跑过）
 make migrate-up   # 执行所有 pending migrations
 make migrate-down # 回滚最后一个 migration
 
@@ -270,24 +376,46 @@ make docker-down
 
 ### 4.1 新节点接入（完整流程）
 
-**第一步：在 Control Plane 创建 Gateway（如果尚未创建）**
+**第一步：标记节点（DaemonSet 才会调度上去）+ 等待自注册**
 
 ```bash
-docker compose exec postgres psql -U postgres -d edgeai -c \
-  "INSERT INTO gateways (name, region, labels, endpoint, status) \
-   VALUES ('local-gw', 'local', '{}', 'grpc://localhost:9443', 'Active') RETURNING id;"
+kubectl label node <node-name> node.edgeai.io/role=gateway
 ```
 
-**第二步：创建 Bootstrap Token**
+gateway-runtime Pod 第一次启动时会自动调用 `CreateGateway`，按 NAME（= K8s
+节点名）幂等写入一行 `gateways` 记录。**不再**需要给节点打 `edgeai.io/gateway-*`
+annotation——旧版本曾用 Node Annotation + K8s 1.27+ 的 Downward API 注入，
+但 Downward API 只能读到 Pod 自己的 annotation（Pod 不会继承 Node 的），
+那段配置实际上是「沉默地失败」，region / endpoint 全部被吞掉。
+
+> 多 region 集群下 NAME 仍然是节点名（每个节点一行 `gateways`），region
+> / endpoint / labels 在第二步统一补登记。
+
+**第二步：（可选）补登记 region / endpoint / labels**
 
 ```bash
-GATEWAY_ID=<上一步返回的gateway-id>
+# NAME 来自第一步的节点名（= spec.nodeName）
+edgectl gateway update <node-name> \
+    --region cn-east-1 \
+    --endpoint gateway-shanghai-01.example.com:9443 \
+    --label env=prod --label site=shanghai
+```
+
+> 如果 `autoRegister` 被关掉、或要给同一个 control plane 额外挂一个
+> region（多 region 共享一个 control plane），先用 `edgectl gateway register`
+> 显式创建，再用 `update` 补 region / endpoint。详细字段见 [§ 1.4.1](#141-注册-gateway推荐)
+> 和 [§ 1.4.3](#143-更新-gateway-业务属性)。
+
+**第三步：创建 Bootstrap Token**
+
+```bash
+GATEWAY_ID=<gateway_id>（从 §1.4.1 / §1.4.2 的 edgectl 输出或 gateway list 中取得）
 edgectl token create --gateway $GATEWAY_ID --expires-in 24h --max-uses 10 --description "node-provisioning"
 ```
 
 复制输出的 `Plaintext` 字段。
 
-**第三步：在节点上准备 edge-agent 配置**
+**第四步：在节点上准备 edge-agent 配置**
 
 ```json
 {
@@ -301,16 +429,26 @@ edgectl token create --gateway $GATEWAY_ID --expires-in 24h --max-uses 10 --desc
 }
 ```
 
-**第四步：启动 edge-agent**
+**第五步：启动 edge-agent**
 
 ```bash
 go run ./cmd/edge-agent --config /etc/edge-agent/edge-agent.json
 ```
 
-**第五步：验证节点接入**
+或使用一键脚本：
 
 ```bash
-edgectl node list --gateway <gateway-id>
+curl -sL https://raw.githubusercontent.com/tangming1996/ai-edge/main/manifests/scripts/install-edge-agent.sh | \
+    GATEWAY_ID="$GATEWAY_ID" \
+    GATEWAY_ADDR=ai-edge-gateway-runtime.edgeai-system.svc.cluster.local:9443 \
+    TOKEN="$TOKEN_PLAINTEXT" \
+    bash
+```
+
+**第六步：验证节点接入**
+
+```bash
+edgectl node list --gateway $GATEWAY_ID
 ```
 
 看到节点 `ONLINE=true` 即接入成功。
@@ -330,15 +468,19 @@ edgectl node revoke <node-id>
 ### 4.3 本地 smoke test（最小链路验证）
 
 ```bash
-# 启动所有依赖
+# 启动所有依赖（Postgres / MinIO / Prometheus）
 make docker-up
 
-# 执行数据库迁移
+# 本地直接跑 apiserver 时，schema 需要手工迁移
 make migrate-up
 
 # 构建并启动 apiserver（后台）
 go run ./cmd/apiserver &
 
-# 运行 smoke 测试
+# 跑 smoke 测试（已改为通过 edgectl gateway register 创建 gateway）
 ./scripts/smoke-test.sh
 ```
+
+> 走 Helm / 生产环境时 `helm install` 已经自动跑过 `migrate up`，并且
+> gateway-runtime 启动时会自调用 `edgectl gateway register` 写一行 gateway。
+> 上面这两步**只在裸跑 apiserver / gateway-runtime** 时才需要。

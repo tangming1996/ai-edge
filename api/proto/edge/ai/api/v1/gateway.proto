@@ -54,10 +54,18 @@ message ListGatewaysResponse {
   PageResponse page = 2;
 }
 
+// UpdateGatewayRequest is a PATCH-style request: every field except
+// `id` is optional, and the server applies COALESCE semantics — an
+// empty / unset field leaves the corresponding column untouched. This
+// lets `edgectl gateway update` change one attribute at a time
+// (e.g. fix an incorrect `--region` without dropping the labels).
 message UpdateGatewayRequest {
   string id = 1;
   Labels labels = 2;
   string endpoint = 3;
+  // Region, when non-empty, overwrites `gateways.region`. An unset
+  // or empty region leaves the existing value in place.
+  string region = 4;
 }
 
 message UpdateGatewayResponse {

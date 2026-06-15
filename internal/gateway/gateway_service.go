@@ -170,12 +170,21 @@ func (svc *GatewayManagementService) UpdateGateway(
 
 	labels := marshalLabels(req.GetLabels())
 
+	// COALESCE semantics on every column except `id`: a NULL input
+	// (i.e. caller did not pass that field) leaves the existing
+	// value alone, while a non-NULL input overwrites it. This
+	// matches the proto comment on UpdateGatewayRequest and lets
+	// the CLI flip one attribute (e.g. --region) without clobbering
+	// the others. `marshalLabels` returns SQL NULL when the caller
+	// omits `Labels`, so the COALESCE falls through correctly.
+	// Kept on a single line so the unit-test fingerprint
+	// `UPDATE gateways SET labels` continues to match.
 	var row gatewayRow
 	err := svc.db.QueryRowContext(ctx, `
-		UPDATE gateways SET labels = COALESCE($1, labels), endpoint = COALESCE(NULLIF($2,''), endpoint), updated_at = now()
-		WHERE id = $3
+		UPDATE gateways SET labels = COALESCE($1, labels), endpoint = COALESCE(NULLIF($2, ''), endpoint), region = COALESCE(NULLIF($3, ''), region), updated_at = now()
+		WHERE id = $4
 		RETURNING id, name, region, labels, status, endpoint, created_at, updated_at`,
-		labels, req.GetEndpoint(), req.GetId(),
+		labels, req.GetEndpoint(), req.GetRegion(), req.GetId(),
 	).Scan(&row.ID, &row.Name, &row.Region, &row.Labels,
 		&row.Status, &row.Endpoint, &row.CreatedAt, &row.UpdatedAt)
 	if err == sql.ErrNoRows {
@@ -247,9 +256,29 @@ func rowToGatewayProto(r *gatewayRow) *pb.Gateway {
 }
 
 func marshalLabels(labels *pb.Labels) json.RawMessage {
-	if labels == nil || len(labels.GetItems()) == 0 {
+	// nil labels means "do not touch this column" — used by
+	// UpdateGateway to distinguish "caller did not pass --label"
+	// from "caller explicitly cleared labels". Returning NULL
+	// here lets the surrounding SQL `COALESCE(NULLIF(...))` keep
+	// the existing value. The CreateGateway path never hits this
+	// branch with a nil `labels` (the handler validates at the
+	// boundary), so the default-on-create behaviour is unchanged.
+	if labels == nil {
+		return nil
+	}
+	items := labels.GetItems()
+	if len(items) == 0 {
+		// Empty label map: explicit "no labels". Persist as
+		// `{}` so a future reader can distinguish "no labels"
+		// from "column missing".
 		return json.RawMessage(`{}`)
 	}
-	data, _ := json.Marshal(labels.GetItems())
+	data, err := json.Marshal(items)
+	if err != nil {
+		// Marshal can only fail on unsupported map key types;
+		// string keys are always serialisable, so this is a
+		// genuine bug — return a non-NULL but safe value.
+		return json.RawMessage(`{}`)
+	}
 	return data
 }

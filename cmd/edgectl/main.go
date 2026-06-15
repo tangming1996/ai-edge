@@ -33,7 +33,7 @@ func main() {
 	root.PersistentFlags().StringVar(&serverAddr, "server", envOrDefault("EDGECTL_SERVER", "localhost:9090"), "gRPC server address")
 	root.PersistentFlags().StringVar(&authToken, "token", os.Getenv("EDGECTL_TOKEN"), "Bearer token for admin auth")
 
-	root.AddCommand(tokenCmd(), nodeCmd(), deploymentCmd(), taskCmd(), versionCmd())
+	root.AddCommand(tokenCmd(), nodeCmd(), deploymentCmd(), taskCmd(), gatewayCmd(), versionCmd())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)

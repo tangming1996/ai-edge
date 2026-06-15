@@ -174,6 +174,52 @@ V1 明确不依赖实例本地承载：
 - 云端在线时：任意实例可 claim、可分发，宕机/替换不影响正确性
 - 云端失联时：降级为只读协调，仅继续已 claim / 已缓存任务的投递，不再 claim 新任务（详见第 10 节自治边界）
 
+### 4.3.6 启动时自注册（V1 新增）
+
+V1 起，`gateway-runtime` 在 DaemonSet 启动后、调 `Register` 任何 RPC 之前，会主动向 apiserver 调用 `GatewayService.CreateGateway`，按 gateway NAME 幂等创建 / 查找 `gateways` 表记录。
+
+```text
+gateway-runtime Pod
+  ↓
+GatewayService.CreateGateway(name=<gateway-name>)
+  ↓
+apiserver 写 gateways（name UNIQUE）
+  ↓
+返回 apiserver_gateway_id（UUID）
+```
+
+设计要点：
+
+- **入口唯一**。操作员不再需要手工 `INSERT INTO gateways`；同样的能力以
+  `edgectl gateway register` 暴露给离线场景（多 region 合并、控制面预先建好
+  gateway 等），命令末行固定打印 `gateway_id: <uuid>` 便于 shell 捕获。
+- **节点级业务属性走 K8s Node Annotation**，不走 chart values。`gatewayRuntime`
+  是 DaemonSet，每节点一个 Pod；把 `name` / `region` / `endpoint` 放在
+  `values.yaml` 等于强制所有 Pod 注册到同一个 gateway 实体——多 region
+  集群下是错的，单 region 也容易误填。Chart 通过 Downward API
+  `fieldRef: metadata.annotations['edgeai.io/gateway-name']` 等（K8s 1.27+）
+  注入到 Pod 环境变量：
+
+  | Annotation | env var | 缺省 |
+  |------------|---------|------|
+  | `edgeai.io/gateway-name` | `GATEWAY_NAME` | 退回到 `spec.nodeName` |
+  | `edgeai.io/gateway-region` | `GATEWAY_REGION` | 空字符串 |
+  | `edgeai.io/gateway-endpoint` | `GATEWAY_ENDPOINT` | 空字符串 |
+
+  `GATEWAY_NAME` 为空时 `SelfRegister` 内部回退到 `GATEWAY_ID`（节点名），
+  保证「不注解节点」也能跑——单 region / dev / smoke 场景的零配置路径。
+
+- **运行时身份仍是 `GATEWAY_ID`**。`apiserver_gateway_id`（UUID）只写到启动
+  日志和 `CACHE_DIR/apiserver_gateway_id`，**不会**改写 runtime 变量——
+  dispatcher / task store 仍按 `GATEWAY_ID`（节点名）做归属判断，换成 UUID
+  会破坏现有 dispatch 一致性。
+- **Helm 默认开启**。`gatewayRuntime.autoRegister=true`（`values.yaml`）会注入
+  `GATEWAY_AUTO_REGISTER=true`；关闭时 Chart 不会渲染该 env，runtime 也就
+  不会自调用。
+- **失败语义**。自注册失败 `log.Fatalf` 退出 Pod，由 DaemonSet 自动重拉；
+  Pod 处于 CrashLoopBackOff 时整个 Gateway 处于不可用状态，监控/告警可基于此
+  触发。
+
 ***
 
 ## 5. 内部模块拆分
